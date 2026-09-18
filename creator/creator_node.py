@@ -69,12 +69,18 @@ DEFAULT_DATA = json.dumps({
     "prompt": "",
     "aspect": "16:9",
     "short_edge": h3.RULES.native_short_edge,
-    # Which files to load. Empty here rather than guessed: a fresh node has no
-    # idea what is on this machine, and the UI fills it from the listing route.
-    "models": {},
-    # Named so the turbo pill has a file to throw. Off until asked; the
-    # frontend's emptyTurbo writes the same name.
-    "turbo": {"lora": "taomate_h3_3step_comfy.safetensors", "on": False},
+    # Packed Comfy-Org bf16 — the Metal stack. Empty used to wait for a folder
+    # guess; that guess also sees FastH3/NVFP4 on this disk, so the default
+    # names the files h3-ws's native FL2VA maps to in ComfyUI.
+    "models": {
+        "fl2va": "minimax_h3_fl2va_pruned_bf16.safetensors",
+        "ref2va": "minimax_h3_ref2va_pruned_bf16.safetensors",
+        "clip": "qwen3vl_32b_minimax_h3_bf16.safetensors",
+        "vae": "minimax_h3_video_vae_fp16.safetensors",
+        "audio_vae": "minimax_h3_audio_vae_fp32.safetensors",
+        "preview": "taeh3.safetensors",
+        "route": "auto",
+    },
     # One card, because one shot is what a node dropped on the canvas is for.
     # The strip grows from here; nothing about the blob changes when it does.
     "segments": [

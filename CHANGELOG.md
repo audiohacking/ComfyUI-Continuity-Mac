@@ -6,12 +6,26 @@ exactly as it was written, wall of text and all.
 
 ## Unreleased
 
-**H3 on Apple GPU finds weights wherever they already are, and turbo is
-TaoMate 3-step.** Continuity still drives ComfyUI core. A prestartup
-registers ComfyUI's `models/` tree, the Hugging Face hub cache for
-Comfy-Org MiniMax-H3, and a sibling h3-ws `models/loras`. The turbo switch
-defaults to `taomate_h3_3step_comfy.safetensors` at strength 0.8 / 3 Euler
-steps; Tutu and LightX2V remain as filename presets.
+**H3 on Metal is forced into a working attention path from this pack,
+not from ComfyUI defaults.** AppleSilicon-FP8 fused RoPE/RMSNorm are
+turned off before that node installs (H3 Q/K is `[B, S, heads, dim]`;
+that kernel indexes by heads). At pack import the node patches
+sub-quadratic attention: `torch.empty` → zeros so MPS `baddbmm(beta=0)`
+cannot broadcast NaNs (ComfyUI#15804), bf16 is upcast to fp32 like fp16
+already was, and query/KV chunks stay under 2^30 elements so a 512 GB
+Mac cannot skip chunking and silently corrupt (ComfyUI#14837). Pytorch
+SDPA is left off — it tried to allocate a several-hundred-GB QK buffer
+and aborted.
+
+**H3 on Apple GPU finds weights wherever they already are, and turbo
+offers TaoMate without collapsing draft/med/good.** Continuity still
+drives ComfyUI core. A prestartup registers ComfyUI's `models/` tree, the
+Hugging Face hub cache for Comfy-Org MiniMax-H3, and a sibling h3-ws
+`models/loras`. TaoMate is a filename preset (strength 0.8, Euler/simple);
+the quality stops stay the family's 4 / 6 / 8 so LightX2V and Tutu keep
+their own counts. FastH3 / NVFP4 / ConvRot files are refused on this fork
+before the sampler — that is the CUDA packed stack; h3-ws runs native
+MiniMax-H3 FL2VA, and ComfyUI wants Comfy-Org pruned bf16.
 
 **The chat's render card turns over, opens in the loupe, sends a still on,
 and can be cancelled.** The corner button turns the plate: the picture on

@@ -73,19 +73,22 @@ _UI = {
         "help": "Text-only, start/end frame and continuing shots run on these weights.",
         # What targeting this checkpoint alone means, on a LoRA's mode rows.
         "when": "Only when generating from text or start/end frames.",
-        "hints": ["fl2va", "first_last", "fasth3", "fastvideo"],
+        "hints": ["fl2va", "first_last"],
+        "avoid": metal.SLOT_AVOID["dit"],
     },
     "ref2va": {
         "name": "Ref2VA",
         "title": "Ref2VA checkpoint",
         "help": "Anything with an @ reference runs on these weights.",
         "when": "Only when @ references are attached.",
-        "hints": ["ref2va", "fasth3", "fastvideo"],
+        "hints": ["ref2va"],
+        "avoid": metal.SLOT_AVOID["dit"],
     },
     "clip": {
         "title": "Text encoder",
         "help": "H3's text encoder. Loaded as CLIPLoader type 'minimax'.",
         "hints": ["minimax"],
+        "avoid": metal.SLOT_AVOID["clip"],
     },
     "vae": {
         "title": "Video VAE",

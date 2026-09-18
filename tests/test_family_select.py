@@ -328,8 +328,8 @@ check("the weights block is the probe's, empty",
                            "p_fl2va": "", "p_ref2va": "", **{
                                f"p_{slot['id']}": ""
                                for slot in catalog["families"][0]["weights"]}})
-check("the previous family's turbo distill is dropped; the destination plants its default file",
-      switched["turboLora"], "taomate_h3_3step_comfy.safetensors")
+check("the turbo LoRA is dropped — it was distilled against the old weights",
+      switched["turboLora"], "")
 check("a card's checkpoint pin is dropped", switched["pinned"], False)
 check("a LoRA is retargeted rather than dropped",
       (switched["loraName"], switched["loraModes"]),

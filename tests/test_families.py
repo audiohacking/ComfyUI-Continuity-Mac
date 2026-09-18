@@ -14,6 +14,7 @@ the property that lets the frontend's mirror suites read them later.
 import glob
 import json
 import os
+import re
 
 import layout
 from harness import FAILURES, check, passed
@@ -221,20 +222,56 @@ check("the opt-in H3 slots say they are opt-in",
       ["control", "cutout", "upscaler"])
 
 fl2va_slot = next(w for w in h3["weights"] if w["id"] == "fl2va")
-check("h3 FL2VA guess also recognises a FastH3 student filename",
-      "fasth3" in fl2va_slot["hints"], True)
-check("h3 turbo defaults to TaoMate 3-step",
+check("h3 FL2VA guess prefers packed bf16, not a FastH3 student",
+      ("fasth3" in fl2va_slot["hints"],
+       any("fasth3" in p for p in fl2va_slot["avoid"])),
+      (False, True))
+clip_slot = next(w for w in h3["weights"] if w["id"] == "clip")
+check("h3 text-encoder guess skips NVFP4 / AWQ",
+      any("nvfp4" in p for p in clip_slot["avoid"]), True)
+
+def _guess(slot, names):
+    hints = [n.lower() for n in slot["hints"] or []]
+    avoid = [re.compile(p, re.I) for p in slot.get("avoid") or []]
+    return [n for n in names
+            if any(h in n.lower() for h in hints)
+            and not any(p.search(n) for p in avoid)]
+
+dits = [
+    "fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors",
+    "minimax_h3_fl2va_pruned_bf16.safetensors",
+    "minimax_h3_ref2va_pruned_bf16.safetensors",
+]
+encoders = [
+    "qwen3vl_32b_minimax_h3_bf16.safetensors",
+    "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+]
+ref2va_slot = next(w for w in h3["weights"] if w["id"] == "ref2va")
+check("FL2VA guess is packed bf16 when FastH3 sits in the same folder",
+      _guess(fl2va_slot, dits),
+      ["minimax_h3_fl2va_pruned_bf16.safetensors"])
+check("Ref2VA guess is packed bf16, not the FL2VA file",
+      _guess(ref2va_slot, dits),
+      ["minimax_h3_ref2va_pruned_bf16.safetensors"])
+check("text-encoder guess is bf16 when NVFP4 is also present",
+      _guess(clip_slot, encoders),
+      ["qwen3vl_32b_minimax_h3_bf16.safetensors"])
+check("h3 turbo names TaoMate as the suggested file",
       h3["capabilities"]["turbo"]["default_lora"],
       "taomate_h3_3step_comfy.safetensors")
 check("h3 turbo presets lead with TaoMate",
       [p["match"] for p in h3["capabilities"]["turbo"]["presets"][:3]],
       [r"taomate", "lightx2v", r"tutu|20to8-nfe|20to8_nfe"])
-check("TaoMate preset is 3 Euler/simple steps at 0.8",
+check("TaoMate owns strength and row, not the quality step table",
       (h3["capabilities"]["turbo"]["presets"][0]["strength"],
-       h3["capabilities"]["turbo"]["presets"][0]["steps"],
+       h3["capabilities"]["turbo"]["presets"][0].get("steps"),
        h3["capabilities"]["turbo"]["presets"][0]["row"]),
-      (0.8, {"draft": 3, "medium": 3, "good": 3},
-       {"sampler_name": "euler", "scheduler": "simple"}))
+      (0.8, None, {"sampler_name": "euler", "scheduler": "simple"}))
+check("Tutu also leaves draft/med/good to the family",
+      h3["capabilities"]["turbo"]["presets"][2].get("steps"), None)
+check("the family's quality stops stay 4 / 6 / 8",
+      h3["capabilities"]["turbo"]["steps"],
+      {"draft": 4, "medium": 6, "good": 8})
 
 check("h3 routes are the family's own ROUTES",
       (h3["routes"]["options"], h3["routes"]["default"]),

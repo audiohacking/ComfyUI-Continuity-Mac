@@ -13,6 +13,9 @@ would be a translation nobody loads. And the node class ids inside are frozen
 whatever the directories do — they are what saved workflows name.
 """
 
+from .creator import metal
+metal.protect_h3_mps()
+
 from .creator import refine_routes  # noqa: F401  (registers /continuity/refine)
 from .creator import server_routes  # noqa: F401  (registers /continuity/assets)
 from .creator.creator_node import comfy_entrypoint  # noqa: F401

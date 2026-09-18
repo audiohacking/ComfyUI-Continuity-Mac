@@ -22,7 +22,8 @@ from dataclasses import dataclass, replace
 import comfy.sample
 
 from ... import (accel, canvas, compile as compiler, guide as guides, media,
-                 models as core, raylight, sampling as sampling_mod, settings)
+                 metal, models as core, raylight, sampling as sampling_mod,
+                 settings)
 from .. import base
 from . import declare, derope, guidelora, models as slots
 
@@ -318,6 +319,7 @@ class H3(base.Family):
 
     def check(self, weights, where, audio=True, face=False):
         core.check(weights, slots.needs(where, audio=audio, face=face), where)
+        metal.refuse_cuda_stack(weights)
 
     def emit_loaders(self, graph, weights, routes):
         if not raylight.enabled(weights):

@@ -927,9 +927,7 @@ export function emptyTurbo(family = DEFAULT_VIDEO_FAMILY) {
     // The file the switch engages, relative to models/loras. Picked in the
     // weights popover, because it is machine configuration like the files above
     // it: set once when the LoRA is downloaded, then thrown from the pill.
-    // A family may name a default file (this Mac fork: TaoMate 3-step) so a
-    // fresh node already has something to throw.
-    lora: TURBO?.default_lora ?? "",
+    lora: "",
     // The user said their checkpoint is a merged distill — turbo with no LoRA
     // at all, the switch owning only the sampler row. Remembered so the pill
     // engages directly on the next press instead of asking again.
