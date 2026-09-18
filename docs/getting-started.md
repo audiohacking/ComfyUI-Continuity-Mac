@@ -25,7 +25,7 @@ git clone https://github.com/audiohacking/ComfyUI-Continuity-Mac continuity
 ```
 
 That leaves one folder, `continuity`. Restart ComfyUI. Search the node
-list for **Continuity Mac**. Dropping that node onto an empty canvas is
+list for **Continuity Metal**. Dropping that node onto an empty canvas is
 enough — the UI mounts on the node itself. An optional starter graph
 lives under `example_workflows/`.
 
@@ -48,7 +48,7 @@ can't put it in the wrong place.
 
 ## First render
 
-1. Add the node: double-click the canvas and search for "Continuity Mac".
+1. Add the node: double-click the canvas and search for "Continuity Metal".
 2. Click the model pill and pick your family and checkpoint. The weights pill
    next to it is where you point each slot at the files you downloaded. Picks
    are remembered per family, so this is a one-time chore.

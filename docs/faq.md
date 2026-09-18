@@ -35,7 +35,7 @@ so saved workflows keep loading. Two folders registering those ids means
 neither node shows up. The startup console log says so.
 
 This fork is the one Mac install. Delete the other copy and restart. Search
-for **Continuity Mac**. NVIDIA users should be on
+for **Continuity Metal**. NVIDIA users should be on
 [the original](https://github.com/roadmaus/ComfyUI-Continuity), not here.
 Nothing you made is in either folder, since presets, settings, favourites and
 LoRA memory sit in ComfyUI's `user/` directory. If the copy you want gone came

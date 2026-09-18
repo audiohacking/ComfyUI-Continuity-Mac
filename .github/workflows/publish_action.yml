@@ -1,20 +1,19 @@
+# Manual publish to the Comfy registry under @audiohacking.
+# Create a publisher id `audiohacking` on https://registry.comfy.org if you
+# have not, then add the registry API key as the repo secret
+# REGISTRY_ACCESS_TOKEN. Do not put the token in this file.
 name: Publish to Comfy registry
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "pyproject.toml"
 
 permissions:
-  issues: write
+  contents: read
 
 jobs:
   publish-node:
-    name: Publish Custom Node to registry
+    name: Publish Continuity Metal
     runs-on: ubuntu-latest
-    if: ${{ github.repository_owner == 'roadmaus' }}
+    if: ${{ github.repository_owner == 'audiohacking' }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4

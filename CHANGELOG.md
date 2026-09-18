@@ -6,6 +6,12 @@ exactly as it was written, wall of text and all.
 
 ## Unreleased
 
+**Continuity Metal publishes to the Comfy registry from a manual GitHub
+Action.** The node id is `continuity-metal` under publisher
+`audiohacking`, so it does not collide with roadmaus's CUDA pack. The
+workflow is on-demand only (`workflow_dispatch`); add the registry API
+key as the repo secret `REGISTRY_ACCESS_TOKEN` before the first run.
+
 **H3 on Metal is forced into a working attention path from this pack,
 not from ComfyUI defaults.** AppleSilicon-FP8 fused RoPE/RMSNorm stay
 off: H3 Q/K is `[B, S, heads, dim]` and that fused kernel takes `L`

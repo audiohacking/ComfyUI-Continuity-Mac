@@ -1,16 +1,20 @@
 [project]
-name = "continuity"
+name = "continuity-metal"
 version = "3.0.0"
-description = "One node for AI video and stills across six model families: MiniMax H3, LTX 2.5, Krea 2, Ideogram 4.0, Qwen Image Edit and Flux 2 Klein. Write a prompt, attach media with @, press Render. Everything renders locally from open weights. The optional prompt refiner can run in-process or on your own server or API provider."
+description = "Apple Silicon fork of Continuity: one node for MiniMax H3, LTX 2.5 and the still families on Metal / MPS. Not the CUDA pack, and not an MLX / h3.c runner."
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = []
+classifiers = [
+    "Operating System :: MacOS",
+    "Environment :: GPU :: Apple Metal",
+]
 
 [project.urls]
-Repository = "https://github.com/roadmaus/ComfyUI-Continuity"
-"Bug Tracker" = "https://github.com/roadmaus/ComfyUI-Continuity/issues"
+Repository = "https://github.com/audiohacking/ComfyUI-Continuity-Mac"
+"Bug Tracker" = "https://github.com/audiohacking/ComfyUI-Continuity-Mac/issues"
 
 [tool.comfy]
-PublisherId = "roadmaus"
-DisplayName = "Continuity Mac"
-Icon = "https://raw.githubusercontent.com/roadmaus/ComfyUI-Continuity/main/docs/img/icon.svg"
+PublisherId = "audiohacking"
+DisplayName = "Continuity Metal"
+Icon = "https://raw.githubusercontent.com/audiohacking/ComfyUI-Continuity-Mac/main/docs/img/icon.svg"

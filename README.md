@@ -1,8 +1,8 @@
-# Continuity Mac
+# Continuity Metal
 
 Apple Silicon fork of [ComfyUI-Continuity](https://github.com/roadmaus/ComfyUI-Continuity).
 It still drives ComfyUI core — MiniMax H3, LTX 2.5 and the still families —
-on **Metal / MPS**. It does not replace the sampler with h3.c.
+on **Metal / MPS**. It does not replace the sampler with h3.c or MLX.
 
 **NVIDIA / CUDA users:** this is not that pack. Install the original instead:
 [roadmaus/ComfyUI-Continuity](https://github.com/roadmaus/ComfyUI-Continuity).
@@ -35,9 +35,13 @@ git clone https://github.com/audiohacking/ComfyUI-Continuity-Mac continuity
 ```
 
 The folder must be named `continuity`: ComfyUI serves the UI from
-`/extensions/continuity/`. Restart ComfyUI. Search for **Continuity Mac**
+`/extensions/continuity/`. Restart ComfyUI. Search for **Continuity Metal**
 and drop it on an empty canvas — that is the whole start. An optional
 example graph is under `example_workflows/`.
+
+From ComfyUI Manager / the registry the node id is `continuity-metal`
+(publisher **audiohacking**). After that install, rename the folder to
+`continuity` and remove the CUDA pack if it is also present.
 
 Nothing to pip install.
 
