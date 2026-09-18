@@ -12,5 +12,5 @@ Repository = "https://github.com/roadmaus/ComfyUI-Continuity"
 
 [tool.comfy]
 PublisherId = "roadmaus"
-DisplayName = "Continuity"
+DisplayName = "Continuity Mac"
 Icon = "https://raw.githubusercontent.com/roadmaus/ComfyUI-Continuity/main/docs/img/icon.svg"

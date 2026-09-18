@@ -220,6 +220,22 @@ check("the opt-in H3 slots say they are opt-in",
       sorted(w["id"] for w in h3["weights"] if not w["required"]),
       ["control", "cutout", "upscaler"])
 
+fl2va_slot = next(w for w in h3["weights"] if w["id"] == "fl2va")
+check("h3 FL2VA guess also recognises a FastH3 student filename",
+      "fasth3" in fl2va_slot["hints"], True)
+check("h3 turbo defaults to TaoMate 3-step",
+      h3["capabilities"]["turbo"]["default_lora"],
+      "taomate_h3_3step_comfy.safetensors")
+check("h3 turbo presets lead with TaoMate",
+      [p["match"] for p in h3["capabilities"]["turbo"]["presets"][:3]],
+      [r"taomate", "lightx2v", r"tutu|20to8-nfe|20to8_nfe"])
+check("TaoMate preset is 3 Euler/simple steps at 0.8",
+      (h3["capabilities"]["turbo"]["presets"][0]["strength"],
+       h3["capabilities"]["turbo"]["presets"][0]["steps"],
+       h3["capabilities"]["turbo"]["presets"][0]["row"]),
+      (0.8, {"draft": 3, "medium": 3, "good": 3},
+       {"sampler_name": "euler", "scheduler": "simple"}))
+
 check("h3 routes are the family's own ROUTES",
       (h3["routes"]["options"], h3["routes"]["default"]),
       (h3slots.ROUTES, models.DEFAULT_ROUTE))

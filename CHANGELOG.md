@@ -6,6 +6,13 @@ exactly as it was written, wall of text and all.
 
 ## Unreleased
 
+**H3 on Apple GPU finds weights wherever they already are, and turbo is
+TaoMate 3-step.** Continuity still drives ComfyUI core. A prestartup
+registers ComfyUI's `models/` tree, the Hugging Face hub cache for
+Comfy-Org MiniMax-H3, and a sibling h3-ws `models/loras`. The turbo switch
+defaults to `taomate_h3_3step_comfy.safetensors` at strength 0.8 / 3 Euler
+steps; Tutu and LightX2V remain as filename presets.
+
 **The chat's render card turns over, opens in the loupe, sends a still on,
 and can be cancelled.** The corner button turns the plate: the picture on
 one side, on the other the prompt as asked, what the refiner actually sent

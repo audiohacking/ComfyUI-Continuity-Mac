@@ -1,12 +1,51 @@
-# Continuity
+# Continuity Mac
 
-One node for AI video and stills in ComfyUI. Write a prompt, attach media with
-`@`, press Render. Six model families, all through ComfyUI core, all local
-open weights. The one thing that can talk to the outside is the prompt
-refiner, and only if you point it at your own server or provider - LM Studio,
-Ollama, or a hosted API with your key.
+Apple Silicon fork of [ComfyUI-Continuity](https://github.com/roadmaus/ComfyUI-Continuity).
+It still drives ComfyUI core — MiniMax H3, LTX 2.5 and the still families —
+on **Metal / MPS**. It does not replace the sampler with h3.c.
+
+**NVIDIA / CUDA users:** this is not that pack. Install the original instead:
+[roadmaus/ComfyUI-Continuity](https://github.com/roadmaus/ComfyUI-Continuity).
+
+One node for AI video and stills. Write a prompt, attach media with `@`,
+press Render. Everything is local open weights. The one thing that can talk
+to the outside is the prompt refiner, and only if you point it at your own
+server or provider — LM Studio, Ollama, or a hosted API with your key.
 
 ![A shot sampling, with the render beside it](docs/img/hero.png)
+
+## Who this is for
+
+- Apple Silicon Mac (M-series), ComfyUI Desktop or a local ComfyUI on MPS
+- One Continuity install: this folder, named `continuity`
+
+Do not install this beside the CUDA pack. The node ids are the same on
+purpose (saved workflows keep loading), so two folders register the same
+ids and **neither node shows up**.
+
+## Install
+
+In ComfyUI Desktop the custom-nodes folder is usually
+`~/Documents/ComfyUI/custom_nodes`. Remove any existing Continuity /
+MiniMax Creator folder first, then:
+
+```
+cd ~/Documents/ComfyUI/custom_nodes
+git clone https://github.com/audiohacking/ComfyUI-Continuity-Mac continuity
+```
+
+The folder must be named `continuity`: ComfyUI serves the UI from
+`/extensions/continuity/`. Restart ComfyUI. Search for **Continuity Mac**
+and drop it on an empty canvas — that is the whole start. An optional
+example graph is under `example_workflows/`.
+
+Nothing to pip install.
+
+Weights are not downloaded. Put files in ComfyUI's `models/` tree (or leave
+them where they already are). A prestartup also registers the Hugging Face
+hub cache and a sibling [h3-ws](https://github.com/lmangani/h3-ws) checkout
+when those exist. Turbo on this fork is **TaoMate 3-step**. Leave attention
+on **default**. See [docs/models.md](docs/models.md#apple-metal).
 
 ## What it does
 
@@ -85,37 +124,7 @@ The other direction is getting the graph out of the way. The chat room and the
 blockout bench are both ways of saying what you want without touching a pill,
 and the pre-stage plus the timeline are what let one prompt become a scene.
 There is no cloud in any of that, and there won't be: everything renders on
-your hardware from weights you downloaded.
-
-## Install
-
-```
-cd ComfyUI/custom_nodes
-git clone https://github.com/roadmaus/ComfyUI-Continuity
-```
-
-That leaves one folder, `ComfyUI-Continuity`, inside `custom_nodes/`. Restart
-ComfyUI. Nothing to pip install.
-
-### Already have MiniMax Creator installed
-
-Don't clone. This pack was renamed, and GitHub redirects the old address here,
-so a pull in the folder you already have is the whole update:
-
-```
-cd ComfyUI/custom_nodes/ComfyUI-MiniMax-Creator
-git pull
-```
-
-The folder name doesn't matter to ComfyUI, so rename it or leave it. If it came
-from the Manager, update it there as usual.
-
-Cloning next to the old folder is what breaks. The node ids stayed the same
-through the rename so that old workflows keep loading, so two folders are two
-packs registering the same ids, and the result is no node in the search at all,
-under either name. If you already have both, delete one and restart. Your
-presets, settings, favourites and LoRA memory are in ComfyUI's `user/`
-directory, not in the pack folder.
+your hardware from weights you already have.
 
 ## Documentation
 
@@ -140,6 +149,8 @@ directory, not in the pack folder.
 | Flux 2 Klein | stills, edited from a picture | [Black Forest Labs](https://huggingface.co/black-forest-labs) |
 
 See [docs/models.md](docs/models.md) for which files you need and where they go.
+On this fork, turbo for H3 is TaoMate 3-step
+(`taomate_h3_3step_comfy.safetensors` in `models/loras`).
 
 There is also an optional **neural refiner**: NVIDIA's DLSS 5 neural renderer
 as a material pass over finished stills and clips (skin, hair, fabric, contact
@@ -152,7 +163,9 @@ DLL on the settings page. See [docs/tools.md](docs/tools.md#neural-refiner-dlss-
 
 This pack is glue. The work underneath it belongs to other people:
 
+- [ComfyUI-Continuity](https://github.com/roadmaus/ComfyUI-Continuity) by roadmaus - the node this fork is
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) by Comfy Org - every family here lives in core, this node drives them
+- [h3-ws](https://github.com/lmangani/h3-ws) - which MiniMax-H3 files and LoRAs this Mac checkout already has
 - [Lightricks](https://huggingface.co/Lightricks) - LTX 2.5, its IC-LoRAs, the duration head and the two-stage pipeline
 - [ComfyUI-Spectrum-MiniMax-H3](https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3) by xmarre - an accelerator on the sampler row
 - [ComfyUI-MiniMaxH3-FirstBlockCache](https://github.com/duckyshell/ComfyUI-MiniMaxH3-FirstBlockCache) by duckyshell - an accelerator on the sampler row
@@ -183,7 +196,7 @@ This pack is glue. The work underneath it belongs to other people:
 - ByteDance - SeedVR2, the Restore backend on the upscale bench
 - Depth Anything 3 and SDPose - the two model-backed tracings, both loaded through core
 - alibaba-pai - the MiniMax-H3-Acc-LoRAs whose 32 output heads the accelerator reads
-- larryvrh and lightx2v - the H3 distillation LoRAs behind turbo
+- TaoMate, larryvrh and lightx2v - the H3 distillation LoRAs behind turbo
 - CiviMeta - the sidecar format the LoRA cards read
 
 Every node pack on that list is optional: if one is installed, the matching

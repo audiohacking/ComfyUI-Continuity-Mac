@@ -51,7 +51,7 @@ export const loraNames = () => names ?? [];
 /** Whether a filename says it is a distillation LoRA. Every released H3 family
  *  does — "turbo" in larryvrh's, lightx2v's and Kijai's names alike — so the
  *  picker leads with these and keeps the character LoRAs out of the way. */
-const looksTurbo = (name) => /turbo|distill/i.test(name);
+const looksTurbo = (name) => /turbo|distill|taomate|tutu/i.test(name);
 
 const SHOW_ALL = "— show all —";
 

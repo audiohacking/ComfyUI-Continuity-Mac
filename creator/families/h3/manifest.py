@@ -9,7 +9,7 @@ strings are the node schema's own (`creator_node._schema`), under the same
 English keys the i18n dictionaries already carry.
 """
 
-from ... import accel, canvas, compile, guide, models as core, sampling, settings
+from ... import accel, canvas, compile, guide, metal, models as core, sampling, settings
 from .. import manifest as m
 from . import declare, grammar, guidelora, models as slots, refine, still
 
@@ -73,14 +73,14 @@ _UI = {
         "help": "Text-only, start/end frame and continuing shots run on these weights.",
         # What targeting this checkpoint alone means, on a LoRA's mode rows.
         "when": "Only when generating from text or start/end frames.",
-        "hints": ["fl2va", "first_last"],
+        "hints": ["fl2va", "first_last", "fasth3", "fastvideo"],
     },
     "ref2va": {
         "name": "Ref2VA",
         "title": "Ref2VA checkpoint",
         "help": "Anything with an @ reference runs on these weights.",
         "when": "Only when @ references are attached.",
-        "hints": ["ref2va"],
+        "hints": ["ref2va", "fasth3", "fastvideo"],
     },
     "clip": {
         "title": "Text encoder",
@@ -91,7 +91,7 @@ _UI = {
         "title": "Video VAE",
         "help": "Decodes the picture — a shot's, and a pre-stage still's.",
         "hints": ["minimax", "h3"],
-        "avoid": ["t1[_-]?image", "image[_-]vae", "audio"],
+        "avoid": metal.SLOT_AVOID["vae"],
     },
     "audio_vae": {
         "title": "Audio VAE",
@@ -206,6 +206,7 @@ _TEMPLATE_HELP = {
 # longest declaration in this file by a distance, and the catalog reads better
 # for having one name where the whole switch used to sit.
 TURBO = {
+    "default_lora": metal.TURBO_LORA,
     "steps": {"draft": 4, "medium": 6, "good": 8},
     "default_quality": "medium",
     "row": {"sampler_name": "euler", "scheduler": "beta"},
@@ -224,8 +225,7 @@ TURBO = {
     # at six steps is a different schedule and the file quietly
     # stops being what it was trained as, so the switch sets what
     # the file needs rather than what the family usually wants.
-    "presets": [{"match": "lightx2v", "strength": 0.6,
-                 "shift_video": 6, "shift_audio": 3},
+    "presets": [*metal.LORA_PRESETS,
                 {"match": r"pdd|acc[-_]?8step", "strength": 1.0,
                  "shift_video": sampling.DEFAULTS["shift_video"],
                  "shift_audio": sampling.DEFAULTS["shift_audio"],

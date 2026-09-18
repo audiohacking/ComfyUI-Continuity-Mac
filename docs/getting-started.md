@@ -2,36 +2,44 @@
 
 ## What you need
 
-- A recent ComfyUI. The model families themselves ship with ComfyUI core (H3
-  is `comfy_extras/nodes_minimax_h3.py`, and the others are core nodes too).
+- Apple Silicon Mac and a recent ComfyUI (Desktop or a local checkout on MPS).
+  The model families themselves ship with ComfyUI core (H3 is
+  `comfy_extras/nodes_minimax_h3.py`, and the others are core nodes too).
   This pack drives them, it does not carry them.
 - No extra Python packages. Cloning the repo is the whole install.
 - The weight files for at least one family. See [models.md](models.md).
+  NVIDIA / CUDA machines should use
+  [the original Continuity](https://github.com/roadmaus/ComfyUI-Continuity)
+  instead of this fork.
 
 ## Install
 
+ComfyUI Desktop's custom-nodes folder is usually
+`~/Documents/ComfyUI/custom_nodes`. Remove any existing Continuity or
+MiniMax Creator folder first — two copies of this pack register the same
+node ids and neither node shows up.
+
 ```
-cd ComfyUI/custom_nodes
-git clone https://github.com/roadmaus/ComfyUI-Continuity
+cd ~/Documents/ComfyUI/custom_nodes
+git clone https://github.com/audiohacking/ComfyUI-Continuity-Mac continuity
 ```
 
-That leaves one folder, `ComfyUI-Continuity`, inside `custom_nodes/`. Restart
-ComfyUI.
+That leaves one folder, `continuity`. Restart ComfyUI. Search the node
+list for **Continuity Mac**. Dropping that node onto an empty canvas is
+enough — the UI mounts on the node itself. An optional starter graph
+lives under `example_workflows/`.
 
-**Already have MiniMax Creator installed? Pull it, don't clone.** The old
-address redirects here, so `git pull` in the folder you have is a complete
-update, whatever that folder is called. Cloning a second copy beside it is what
-breaks: the node ids stayed the same through the rename, two folders register
-the same ids, and the result is no node showing up at all. If you
-already have both, delete one and restart. Nothing you made is in either
-folder, since presets and settings live in ComfyUI's `user/` directory.
+Presets and settings live in ComfyUI's `user/` directory, not in the pack
+folder.
 
 ## Download one family's weights
 
-Pick the family you want to start with and download its files from
-[models.md](models.md). The minimum is small: H3 video is five files, LTX 2.5
-video is four, a Krea 2 still is four. Everything else in the models list is
-optional.
+Pick the family you want to start with and put its files where
+[models.md](models.md) says. This fork does not download them. On Apple
+Silicon it also searches the Hugging Face hub cache and a sibling h3-ws
+`models/` tree when those exist. The minimum for a family you do not already
+have is small: H3 video is five files, LTX 2.5 video is four, a Krea 2 still
+is four.
 
 The Comfy-Org and Lightricks repositories are laid out like the `models/`
 folder already, so a file at `diffusion_models/krea2_raw_bf16.safetensors` in
@@ -40,7 +48,7 @@ can't put it in the wrong place.
 
 ## First render
 
-1. Add the node: double-click the canvas and search for "Continuity".
+1. Add the node: double-click the canvas and search for "Continuity Mac".
 2. Click the model pill and pick your family and checkpoint. The weights pill
    next to it is where you point each slot at the files you downloaded. Picks
    are remembered per family, so this is a one-time chore.

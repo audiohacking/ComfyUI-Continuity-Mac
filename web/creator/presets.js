@@ -1515,7 +1515,7 @@ export function applyToPiece(body, keys, timeline, io, { from = "piece" } = {}) 
       from === "prestage" ? S.DEFAULT_VIDEO_FAMILY : S.pieceFamily(timeline));
   }
   if (chosen.has("speed")) {
-    timeline.turbo = S.parseTurbo(body.speed?.turbo ?? null);
+    timeline.turbo = S.parseTurbo(body.speed?.turbo ?? null, S.pieceFamily(timeline));
     applyRow(body.speed?.row, io);
   }
   if (chosen.has("prompt")) {

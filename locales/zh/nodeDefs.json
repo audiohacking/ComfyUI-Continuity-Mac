@@ -1,10 +1,10 @@
 {
   "MiniMaxH3Creator": {
-    "display_name": "Continuity",
+    "display_name": "Continuity Mac",
     "description": "用文字描述视频，并用 @ 引用附加的媒体。在 MiniMax H3 或 LTX 2.5 上渲染，根据附加内容路由到相应的检查点，并保存带声音的成片。再写一个镜头，同一个节点就成为时间线 — 一条由若干卡片组成的胶片，每张卡片都有自己的提示词、参考、LoRA 与模型家族，以剪切或接续相连。"
   },
   "MiniMaxH3Timeline": {
-    "display_name": "Continuity 时间线",
+    "display_name": "Continuity Mac 时间线",
     "description": "用文字描述视频，并用 @ 引用附加的媒体。在 MiniMax H3 或 LTX 2.5 上渲染，根据附加内容路由到相应的检查点，并保存带声音的成片。再写一个镜头，同一个节点就成为时间线 — 一条由若干卡片组成的胶片，每张卡片都有自己的提示词、参考、LoRA 与模型家族，以剪切或接续相连。"
   },
   "MiniMaxH3TimelineSegment": {

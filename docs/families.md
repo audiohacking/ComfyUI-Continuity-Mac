@@ -41,8 +41,8 @@ Video with synchronized sound, and stills on the pre-stage.
   recipe measured for it; both stay yours to change.
 - **Spoken dialogue** is a first-class feature; see the spoken lines section
   in [the-node.md](the-node.md#spoken-lines).
-- **Turbo** is a distillation LoRA (in the same repo as the weights), driven
-  by the turbo pill at 4 to 8 steps.
+- **Turbo** is TaoMate 3-step on this fork (`taomate_h3_3step_comfy.safetensors`,
+  strength 0.8, 3 Euler steps). LightX2V and Tutu remain as filename presets.
 - **A guide LoRA pass** finishes a render through a file trained to map one
   video to another — a sharpener, a style transfer — with each pass pinned as
   its own aligned guide (see [tools.md](tools.md#guide-lora-pass)).

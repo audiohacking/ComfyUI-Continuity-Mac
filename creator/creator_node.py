@@ -72,6 +72,9 @@ DEFAULT_DATA = json.dumps({
     # Which files to load. Empty here rather than guessed: a fresh node has no
     # idea what is on this machine, and the UI fills it from the listing route.
     "models": {},
+    # Named so the turbo pill has a file to throw. Off until asked; the
+    # frontend's emptyTurbo writes the same name.
+    "turbo": {"lora": "taomate_h3_3step_comfy.safetensors", "on": False},
     # One card, because one shot is what a node dropped on the canvas is for.
     # The strip grows from here; nothing about the blob changes when it does.
     "segments": [
@@ -162,7 +165,7 @@ def _schema(node_id, display_name, blob, deprecated=False):
             io.Boolean.Input("sage", default=False,
                 tooltip="Deprecated — use 'attention'. A workflow saved with this on still runs sage attention."),
             io.Combo.Input("attention", options=accel.ATTENTION_MODES, default="default",
-                tooltip="Which attention H3 runs. 'default' is the checkpoint's own; 'sage' is quantized attention (needs ComfyUI-KJNodes and the sageattention package, NVIDIA only); 'kitchen' is core's own int8 kernel, with nothing to install; 'sla' is block-sparse attention (needs ComfyUI-PlagueKind-Nodes and Triton) — it attends a fraction of the key blocks rather than a cheaper kernel over all of them, pays off on long high-resolution shots, and is made for the lightx2v SLA turbo LoRA on the stack. One at a time — a model has one attention. All three are faster, and all compose with the caches and with Spectrum."),
+                tooltip="Which attention H3 runs. On Apple GPU leave this on 'default' — sage, kitchen int8 and SLA are NVIDIA/Triton paths and are how H3 turns into noise on Metal. 'default' is the checkpoint's own; 'sage' is quantized attention (needs ComfyUI-KJNodes and the sageattention package, NVIDIA only); 'kitchen' is core's own int8 kernel, with nothing to install; 'sla' is block-sparse attention (needs ComfyUI-PlagueKind-Nodes and Triton) — it attends a fraction of the key blocks rather than a cheaper kernel over all of them, pays off on long high-resolution shots, and is made for the lightx2v SLA turbo LoRA on the stack. One at a time — a model has one attention."),
             io.Boolean.Input("chunk_ffn", default=False,
                 tooltip="Low VRAM: run H3's feed-forward in chunks over the packed sequence (KJNodes' Chunk FFN). Lowers the peak a render has to fit in, and the frames are the same ones — activations are quantized per token, so chunking is a rearrangement rather than a trade. Needs ComfyUI-KJNodes. Composes with everything above."),
             io.Boolean.Input("fp16_accumulation", default=False,
@@ -346,7 +349,7 @@ def _render(blob, seed, steps, cfg, sampler_name, scheduler,
 class MiniMaxH3Creator(io.ComfyNode):
     @classmethod
     def define_schema(cls):
-        return _schema("MiniMaxH3Creator", "Continuity", "creator_data")
+        return _schema("MiniMaxH3Creator", "Continuity Mac", "creator_data")
 
     @classmethod
     def fingerprint_inputs(cls, creator_data, **kwargs):
@@ -388,7 +391,7 @@ class MiniMaxH3Timeline(io.ComfyNode):
 
     @classmethod
     def define_schema(cls):
-        return _schema("MiniMaxH3Timeline", "Continuity Timeline", "timeline_data",
+        return _schema("MiniMaxH3Timeline", "Continuity Mac Timeline", "timeline_data",
                        deprecated=True)
 
     @classmethod

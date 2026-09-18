@@ -1,0 +1,52 @@
+{
+  "id": "continuity-mac-h3-taomate",
+  "revision": 0,
+  "last_node_id": 1,
+  "last_link_id": 0,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "MiniMaxH3Creator",
+      "pos": [80, 80],
+      "size": [980, 700],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Continuity Mac",
+      "properties": {
+        "Node name for S&R": "MiniMaxH3Creator"
+      },
+      "widgets_values": [
+        "{\n  \"version\": 2,\n  \"render\": \"chained\",\n  \"prompt\": \"\",\n  \"aspect\": \"9:16\",\n  \"short_edge\": 768,\n  \"loras\": [\n    {\n      \"name\": \"taomate_h3_3step_comfy.safetensors\",\n      \"strength\": 0.8\n    }\n  ],\n  \"audio_tail_s\": 1,\n  \"models\": {\n    \"fl2va\": \"minimax_h3_fl2va_pruned_bf16.safetensors\",\n    \"ref2va\": \"minimax_h3_ref2va_pruned_bf16.safetensors\",\n    \"clip\": \"qwen3vl_32b_minimax_h3_bf16.safetensors\",\n    \"vae\": \"minimax_h3_video_vae_fp16.safetensors\",\n    \"audio_vae\": \"minimax_h3_audio_vae_fp32.safetensors\",\n    \"preview\": \"taeh3.safetensors\",\n    \"route\": \"auto\"\n  },\n  \"turbo\": {\n    \"lora\": \"taomate_h3_3step_comfy.safetensors\",\n    \"on\": true,\n    \"saved\": {\n      \"steps\": 20,\n      \"sampler_name\": \"res_multistep\",\n      \"scheduler\": \"simple\",\n      \"shift_video\": 12,\n      \"shift_audio\": 3\n    }\n  },\n  \"sampling\": {\n    \"steps\": 3,\n    \"sampler_name\": \"euler\",\n    \"scheduler\": \"simple\",\n    \"shift_video\": 12,\n    \"shift_audio\": 3,\n    \"block_cache\": \"off\",\n    \"spectrum\": false,\n    \"attention\": \"default\"\n  },\n  \"segments\": [\n    {\n      \"prompt\": \"\",\n      \"assets\": [],\n      \"loras\": [],\n      \"duration_s\": 6,\n      \"checkpoint\": \"auto\"\n    }\n  ]\n}",
+        0,
+        "randomize",
+        3,
+        1,
+        "euler",
+        "simple",
+        12,
+        3,
+        "off",
+        false,
+        0.5,
+        false,
+        "default",
+        false,
+        false,
+        ""
+      ]
+    }
+  ],
+  "links": [],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.85,
+      "offset": [0, 0]
+    }
+  },
+  "version": 0.4
+}

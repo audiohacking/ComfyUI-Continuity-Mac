@@ -28,16 +28,15 @@ The gear on the node's rail opens the pack's settings.
 
 ### I installed Continuity and now no node shows up at all
 
-Look in `ComfyUI/custom_nodes` for a second copy of this pack, usually
-`ComfyUI-MiniMax-Creator` sitting beside a fresh `ComfyUI-Continuity`. The node
-ids stayed the same through the rename, on purpose, so that saved workflows
-kept loading. The cost is that two folders of this pack are two packs
-registering the same ids, and you end up with neither in the node search. The
-startup console log says so, somewhere above wherever you are looking.
+Look in `ComfyUI/custom_nodes` for a second copy: the CUDA pack
+(`continuity`, `ComfyUI-Continuity`, `ComfyUI-MiniMax-Creator`) sitting
+beside this fork (`continuity-mac`). The node ids are the same on purpose,
+so saved workflows keep loading. Two folders registering those ids means
+neither node shows up. The startup console log says so.
 
-Delete one of them and restart. Which one is up to you: the old address
-redirects here, so a `git pull` in the MiniMax Creator folder leaves you fully
-up to date under an old folder name, and the name means nothing to ComfyUI.
+This fork is the one Mac install. Delete the other copy and restart. Search
+for **Continuity Mac**. NVIDIA users should be on
+[the original](https://github.com/roadmaus/ComfyUI-Continuity), not here.
 Nothing you made is in either folder, since presets, settings, favourites and
 LoRA memory sit in ComfyUI's `user/` directory. If the copy you want gone came
 from the ComfyUI Manager, uninstall it there.
@@ -46,6 +45,13 @@ from the ComfyUI Manager, uninstall it there.
 
 Not a bug: a weight file is missing. Put the file it names in the folder it
 names. [models.md](models.md) has every file.
+
+### H3 video is only noise / static
+
+Leave attention on **default**. Turbo on this fork is TaoMate 3-step
+(`taomate_h3_3step_comfy.safetensors`). Sage, SLA and Spectrum are NVIDIA
+paths. The weights live under ComfyUI's `models/` tree (and the Hugging Face
+hub cache / h3-ws, which the pack also searches).
 
 ### CUDA OOM with `HostBuffer.read_file_slice` on a long render
 

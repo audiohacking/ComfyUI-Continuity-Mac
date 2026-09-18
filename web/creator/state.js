@@ -927,7 +927,9 @@ export function emptyTurbo(family = DEFAULT_VIDEO_FAMILY) {
     // The file the switch engages, relative to models/loras. Picked in the
     // weights popover, because it is machine configuration like the files above
     // it: set once when the LoRA is downloaded, then thrown from the pill.
-    lora: "",
+    // A family may name a default file (this Mac fork: TaoMate 3-step) so a
+    // fresh node already has something to throw.
+    lora: TURBO?.default_lora ?? "",
     // The user said their checkpoint is a merged distill — turbo with no LoRA
     // at all, the switch owning only the sampler row. Remembered so the pill
     // engages directly on the next press instead of asking again.
@@ -946,8 +948,8 @@ export function emptyTurbo(family = DEFAULT_VIDEO_FAMILY) {
   };
 }
 
-export function parseTurbo(raw) {
-  const out = emptyTurbo();
+export function parseTurbo(raw, family = DEFAULT_VIDEO_FAMILY) {
+  const out = emptyTurbo(family);
   if (!raw || typeof raw !== "object") return out;
   if (typeof raw.lora === "string") out.lora = raw.lora.trim();
   out.merged = raw.merged === true;
@@ -1787,7 +1789,7 @@ export function parseState(raw) {
       state.guide_lora = parseGuideLora(state.guide_lora, pieceFamily(state));
       state.models = parseModels(state.models);
       state.upscale_models = parseUpscalerModels(state.upscale_models);
-      state.turbo = parseTurbo(state.turbo);
+      state.turbo = parseTurbo(state.turbo, pieceFamily(state));
       state.guide = parseGuide(state.guide, pieceFamily(state));
       normalizeCheckpoint(state);
       // The cast, on the same terms a timeline's is read — a still's request
@@ -3324,7 +3326,7 @@ export function parseTimeline(raw) {
       timeline.models_spare = parseSpareModels(timeline.models_spare);
       timeline.sampling_spare = parseSamplingSpare(timeline.sampling_spare);
       timeline.upscale_models = parseUpscalerModels(timeline.upscale_models);
-      timeline.turbo = parseTurbo(timeline.turbo);
+      timeline.turbo = parseTurbo(timeline.turbo, timeline.family);
       timeline.guide = parseGuide(timeline.guide, pieceFamily(timeline));
       // No card is invented for a blob that has none: a fresh node's widget is
       // "{}" and the strip it opens is empty on purpose — see `emptyTimeline`.

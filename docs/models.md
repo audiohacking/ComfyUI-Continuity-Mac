@@ -1,41 +1,91 @@
 # Model downloads
 
-Nothing is bundled and nothing is fetched at runtime. You put files where
-ComfyUI already looks and pick them on the node's **weights** pill. If a render
-needs a file it doesn't have, it is refused before the queue starts, and the
-message names the field and the folder.
+Nothing is bundled. You put files where ComfyUI already looks and pick them
+on the node's **weights** pill. If a render needs a file it doesn't have, it
+is refused before the queue starts, and the message names the field and the
+folder.
+
+A prestartup also searches the Hugging Face hub cache and a sibling
+[h3-ws](https://github.com/lmangani/h3-ws) `models/` tree when those exist, so
+a file you already downloaded does not have to be copied. New files go in
+`ComfyUI/models/` (Desktop: `~/Documents/ComfyUI/models`).
 
 A few notes that apply everywhere:
 
 - Pick **one** weight per slot. The quantizations in a repo (`bf16`,
-  `fp8_scaled`, `int8_convrot`, `nvfp4`) are alternatives, not a set. `bf16` is
-  the reference, the others trade memory for quality.
-- `fp8` only speeds up sampling on cards with hardware fp8 matmul (RTX
-  40-series and later). On older cards it still saves memory.
+  `fp8_scaled`, `int8_convrot`, `nvfp4`) are alternatives, not a set. On
+  Apple GPU this fork wants **bf16** (or `fp16` / `fp32` for the VAEs).
+- `fp8` only speeds up sampling on NVIDIA cards with hardware fp8 matmul.
+  On Apple GPU it is not a speed path — do not pick `fp8_scaled` H3 files.
+- `nvfp4` and FastH3 / FastVideo student DiTs are CUDA stacks. They decode
+  as noise on Metal. NVIDIA users should be on
+  [the original Continuity](https://github.com/roadmaus/ComfyUI-Continuity).
 - GGUF files work if [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) is
   installed. Drop the `.gguf` in the same folder and pick it like any other
   file.
-- If a long render dies with a `HostBuffer.read_file_slice` CUDA OOM, start
-  ComfyUI with `--disable-dynamic-vram`
-  ([ComfyUI#15255](https://github.com/Comfy-Org/ComfyUI/issues/15255)).
 
 All folders below are under `ComfyUI/models/`.
 
 ## MiniMax H3 (video with sound, and stills)
 
-From [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3):
+Packed ComfyUI safetensors from
+[Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3) — not the
+native MiniMaxAI trees (those are for h3.c). Leave attention on **default**.
 
 | Slot | File | Folder |
 |---|---|---|
-| FL2VA checkpoint | `minimax_h3_fl2va_*.safetensors` | `diffusion_models` |
-| Ref2VA checkpoint | `minimax_h3_ref2va_*.safetensors` | `diffusion_models` |
-| Text encoder | `qwen3vl_32b_minimax_h3_*.safetensors` | `text_encoders` |
+| FL2VA checkpoint | `minimax_h3_fl2va_pruned_bf16.safetensors` | `diffusion_models` |
+| Ref2VA checkpoint | `minimax_h3_ref2va_pruned_bf16.safetensors` | `diffusion_models` |
+| Text encoder | `qwen3vl_32b_minimax_h3_bf16.safetensors` | `text_encoders` |
 | Video VAE | `minimax_h3_video_vae_fp16.safetensors` | `vae` |
 | Audio VAE | `minimax_h3_audio_vae_fp32.safetensors` | `vae` |
 
 You need both checkpoints: H3 routes between them based on what you attach.
-The same repo carries the turbo distillation LoRAs under `loras/`; the turbo
-switch on the sampler row finds them there.
+
+Tighter on RAM: the matching `*_pruned_int8_convrot.safetensors` DiTs and
+`qwen3vl_32b_minimax_h3_int8_convrot.safetensors` encoder from the same repo.
+ComfyUI emulates those on M-series; they are not the FastH3 student.
+
+### Turbo (TaoMate 3-step)
+
+This fork's turbo default is **not** the LightX2V files in Comfy-Org's
+`loras/`. It is TaoMate, stacked on the **base** FL2VA above — not on a
+FastH3 student.
+
+From [Robert1212star/TaoMate-H3-3Step-ComfyUI](https://huggingface.co/Robert1212star/TaoMate-H3-3Step-ComfyUI):
+
+| File | Folder |
+|---|---|
+| `taomate_h3_3step_comfy.safetensors` | `loras` |
+
+Strength 0.8, 3 Euler / simple steps. The turbo switch finds it by filename.
+
+Optional filename presets still match LightX2V
+([lightx2v/Minimax-h3-Turbo](https://huggingface.co/lightx2v/Minimax-h3-Turbo),
+the `*_comfyui_bf16.safetensors` files) and Tutu
+([tutututututu/Tutu-MiniMax-H3-AudioVideo-20to8-NFE-LoRA](https://huggingface.co/tutututututu/Tutu-MiniMax-H3-AudioVideo-20to8-NFE-LoRA)
+under `comfyui/`).
+
+### Fetch
+
+The Comfy-Org repo is laid out like `models/` already. From the ComfyUI root:
+
+```bash
+hf download Comfy-Org/MiniMax-H3 \
+  diffusion_models/minimax_h3_fl2va_pruned_bf16.safetensors \
+  diffusion_models/minimax_h3_ref2va_pruned_bf16.safetensors \
+  text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors \
+  vae/minimax_h3_video_vae_fp16.safetensors \
+  vae/minimax_h3_audio_vae_fp32.safetensors \
+  --local-dir models
+
+hf download Robert1212star/TaoMate-H3-3Step-ComfyUI \
+  taomate_h3_3step_comfy.safetensors \
+  --local-dir models/loras
+```
+
+Or `python3 scripts/download_metal_h3.py` from this pack (writes the same
+five Comfy-Org files plus TaoMate into `~/Documents/ComfyUI/models`).
 
 Optional: [`taeh3.safetensors`](https://github.com/madebyollin/taehv/blob/main/safetensors/taeh3.safetensors)
 in `vae_approx` gives H3 a properly decoded live preview.

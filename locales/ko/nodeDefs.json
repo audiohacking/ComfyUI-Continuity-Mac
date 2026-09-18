@@ -1,10 +1,10 @@
 {
   "MiniMaxH3Creator": {
-    "display_name": "Continuity",
+    "display_name": "Continuity Mac",
     "description": "영상을 글로 묘사하고 @ 로 첨부한 미디어를 참조합니다. MiniMax H3 또는 LTX 2.5 로 렌더링하며, 첨부 내용에 맞는 체크포인트로 라우팅해 사운드가 들어간 완성 클립을 저장합니다. 숏을 하나 더 쓰면 같은 노드가 타임라인이 됩니다 — 각 카드가 자체 프롬프트·레퍼런스·LoRA·모델 패밀리를 가지고, 컷 또는 이어붙이기로 연결된 하나의 스트립입니다."
   },
   "MiniMaxH3Timeline": {
-    "display_name": "Continuity 타임라인",
+    "display_name": "Continuity Mac 타임라인",
     "description": "영상을 글로 묘사하고 @ 로 첨부한 미디어를 참조합니다. MiniMax H3 또는 LTX 2.5 로 렌더링하며, 첨부 내용에 맞는 체크포인트로 라우팅해 사운드가 들어간 완성 클립을 저장합니다. 숏을 하나 더 쓰면 같은 노드가 타임라인이 됩니다 — 각 카드가 자체 프롬프트·레퍼런스·LoRA·모델 패밀리를 가지고, 컷 또는 이어붙이기로 연결된 하나의 스트립입니다."
   },
   "MiniMaxH3TimelineSegment": {
