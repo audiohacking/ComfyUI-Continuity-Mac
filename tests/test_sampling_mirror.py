@@ -129,9 +129,11 @@ out.turboPresets = Object.fromEntries(
   ["turbo/minimax_h3_ref2va_pdd_acc_8step_comfyui.safetensors",
    "MiniMax-H3-FL2VA-Acc-8Step.safetensors",
    "turbo/lightx2v_4step.safetensors",
-   "turbo/minimax_h3_turbo_v4.safetensors"].map(
+   "turbo/minimax_h3_turbo_v4.safetensors",
+   "taomate_h3_3step_comfy.safetensors"].map(
     (name) => [name, { steps: S.turboSteps(name, "h3"), row: S.turboRow(name, "h3"),
-                       strength: S.turboStrength(name, "h3") }]));
+                       strength: S.turboStrength(name, "h3"),
+                       fixed: S.turboPreset(name, "h3").fixed === true }]));
 // Under VDN-H3 every file resolves to the stage's block: the file is off the
 // run and the stage's adapter is the distillation.
 out.turboUnderVdn = ["turbo/lightx2v_4step.safetensors", ""].map((name) => {
@@ -160,7 +162,14 @@ for name in ("turbo/minimax_h3_ref2va_pdd_acc_8step_comfyui.safetensors",
              "MiniMax-H3-FL2VA-Acc-8Step.safetensors"):
     check(f"{name.split('/')[-1]} brings its own row and steps",
           reflected["turboPresets"][name],
-          {"steps": own["steps"], "row": own["row"], "strength": own["strength"]})
+          {"steps": own["steps"], "row": own["row"], "strength": own["strength"],
+           "fixed": False})
+
+taomate = next(p for p in turbo_block["presets"] if "taomate" in p["match"])
+check("TaoMate is the 3-step distill, quality stops hidden",
+      reflected["turboPresets"]["taomate_h3_3step_comfy.safetensors"],
+      {"steps": taomate["steps"], "row": taomate["row"],
+       "strength": taomate["strength"], "fixed": True})
 
 for name in ("turbo/lightx2v_4step.safetensors", "turbo/minimax_h3_turbo_v4.safetensors"):
     check(f"{name.split('/')[-1]} takes the family's",

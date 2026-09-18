@@ -392,7 +392,9 @@ export function turboPills({ container, value, set, onCommit }) {
   // Only while it is doing something, like the spectrum blend: off, the
   // qualities are a setting for a feature not in use.
   // Not under VDN either: a DMD stage has one count, and three stops writing
-  // the same eight would be a control with nothing to choose.
+  // the same eight would be a control with nothing to choose. Same for a
+  // distill distilled at one NFE (TaoMate is 3/3/3) — `fixed`, or every
+  // quality writing the same number, hides the stops.
   if (on && !vdn) {
     const steps = Number(value("steps", 0));
     // The picked file's table, which is the family's for everything that does
@@ -400,8 +402,10 @@ export function turboPills({ container, value, set, onCommit }) {
     // than through the three stock sentences, which would be about numbers it
     // is not running.
     const table = S.turboSteps(turbo.lora, S.pieceFamily(container));
-    const own = S.turboPreset(turbo.lora, S.pieceFamily(container)).note;
-    parts.push(...S.TURBO_QUALITIES.map((quality) => el("button", {
+    const preset = S.turboPreset(turbo.lora, S.pieceFamily(container));
+    const own = preset.note;
+    const oneCount = new Set(S.TURBO_QUALITIES.map((quality) => table[quality])).size < 2;
+    if (!preset.fixed && !oneCount) parts.push(...S.TURBO_QUALITIES.map((quality) => el("button", {
       class: "mmc-turbo-opt",
       // Pressed is derived from the real steps widget, so a hand-edited step
       // count un-presses all three rather than one of them lying about it.

@@ -890,7 +890,8 @@ export function turboPreset(name, family = DEFAULT_VIDEO_FAMILY, vdn = false) {
   const hit = TURBO.presets.find((p) => new RegExp(p.match, "i").test(name || ""));
   if (hit) {
     return { strength: hit.strength, shift_video: hit.shift_video, shift_audio: hit.shift_audio,
-             row: hit.row ?? TURBO.row, steps: hit.steps ?? TURBO.steps, note: hit.note ?? "" };
+             row: hit.row ?? TURBO.row, steps: hit.steps ?? TURBO.steps, note: hit.note ?? "",
+             fixed: hit.fixed === true };
   }
   return { strength: TURBO.default_strength,
            shift_video: TURBO_RESET.shift_video, shift_audio: TURBO_RESET.shift_audio,

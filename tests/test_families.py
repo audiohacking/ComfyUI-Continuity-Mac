@@ -262,12 +262,14 @@ check("h3 turbo names TaoMate as the suggested file",
 check("h3 turbo presets lead with TaoMate",
       [p["match"] for p in h3["capabilities"]["turbo"]["presets"][:3]],
       [r"taomate", "lightx2v", r"tutu|20to8-nfe|20to8_nfe"])
-check("TaoMate owns strength and row, not the quality step table",
+check("TaoMate owns the 3-step table and hides the quality stops",
       (h3["capabilities"]["turbo"]["presets"][0]["strength"],
        h3["capabilities"]["turbo"]["presets"][0].get("steps"),
+       h3["capabilities"]["turbo"]["presets"][0].get("fixed"),
        h3["capabilities"]["turbo"]["presets"][0]["row"]),
-      (0.8, None, {"sampler_name": "euler", "scheduler": "simple"}))
-check("Tutu also leaves draft/med/good to the family",
+      (0.8, {"draft": 3, "medium": 3, "good": 3}, True,
+       {"sampler_name": "euler", "scheduler": "simple"}))
+check("Tutu still leaves draft/med/good to the family",
       h3["capabilities"]["turbo"]["presets"][2].get("steps"), None)
 check("the family's quality stops stay 4 / 6 / 8",
       h3["capabilities"]["turbo"]["steps"],

@@ -6,9 +6,9 @@ and LoRAs may live in the sibling h3-ws checkout. `register_search_paths`
 adds every one of those that exists so a picker sees the file once, wherever
 it landed.
 
-Turbo on this fork still offers TaoMate by filename. Strength and the
-sampler row are that file's; draft / med / good stay the family's step
-table so LightX2V, Tutu and the rest keep their own counts.
+Turbo on this fork still offers TaoMate by filename. That file is a 3-step
+distill, so its preset owns the count (one number, no draft/med/good
+spread). LightX2V, Tutu and PDD keep their own tables.
 """
 
 from __future__ import annotations
@@ -25,6 +25,9 @@ SHARED_MODELS = Path.home() / "ComfyUI-Shared" / "models"
 HF_COMFY_ORG_H3 = "models--Comfy-Org--MiniMax-H3"
 
 TURBO_LORA = "taomate_h3_3step_comfy.safetensors"
+# TaoMate was distilled at 3 NFE. One count, so the quality stops hide —
+# three buttons writing the same 3 would be VDN's "fixed" case again.
+TAOMATE_STEPS = {"draft": 3, "medium": 3, "good": 3}
 
 # Guess-time exclusions. VAEs share a folder. DiT / CLIP needles keep the
 # CUDA packed stacks out of an empty-node guess: h3-ws runs native
@@ -43,12 +46,15 @@ _CUDA_STACK = re.compile(
 
 # Filename presets the turbo switch matches. Same shape as the original
 # lightx2v card: strength, shifts, and a row when the file was distilled
-# against one. No `steps` key — the family's draft / med / good table stays
-# in force so picking another distill does not collapse the quality stops.
+# against one. `steps` only when that file was distilled against a count —
+# LightX2V and Tutu leave draft / med / good to the family; TaoMate is a
+# 3-step distill so it owns the table and `fixed` hides the three stops.
 LORA_PRESETS = (
     {"match": r"taomate", "strength": 0.8,
      "shift_video": 12, "shift_audio": 3,
-     "row": {"sampler_name": "euler", "scheduler": "simple"}},
+     "row": {"sampler_name": "euler", "scheduler": "simple"},
+     "steps": TAOMATE_STEPS, "fixed": True,
+     "note": "TaoMate is a 3-step distill; the quality stops would all write 3."},
     {"match": "lightx2v", "strength": 0.6, "shift_video": 6, "shift_audio": 3},
     {"match": r"tutu|20to8-nfe|20to8_nfe", "strength": 0.8,
      "shift_video": 12, "shift_audio": 3,
@@ -160,6 +166,13 @@ def refuse_cuda_stack(weights):
 # frequency table by head, every token gets the same few rotations, and the
 # VAE decodes blocky noise. The env is what stops that pack installing;
 # disarm undoes it if the pack already loaded.
+#
+# After RoPE, H3 transposes Q/K to [B, heads, S, dim] before
+# optimized_attention(skip_reshape=True). Dense pytorch SDPA would see the
+# right layout and still be wrong: it materializes QK and aborted at ~383 GB
+# on a long packed sequence. Sub-quadratic with the patches below is the
+# working path. mtlflashattn is the next speed bet — it never forms QK and
+# already expects BHSD — but only once a fallback cannot reach stock SDPA.
 ASFP8_ROPE_ENV = "ASFP8_ROPE_FAST"
 ASFP8_ROPE_TAG = "[AppleSilicon-FP8/rope-fast]"
 ASFP8_NORM_ENV = "ASFP8_FUSED_NORM"
@@ -170,6 +183,10 @@ ASFP8_NORM_TAG = "[AppleSilicon-FP8/fused-norm]"
 # sub-quadratic skip chunking because "there is plenty of RAM".
 MPS_ATTN_ELEM_CAP = 2 ** 30
 
+# Continuity accelerators that are CUDA/Triton. On MPS they are noise or a
+# hang; `default` attention, chunked FFN, and the step caches still run.
+NVIDIA_ATTENTION = ("sage", "kitchen", "sla")
+
 
 def asfp8_rope_length(q_shape):
     """Sequence length the AppleSilicon-FP8 fused kernel would use for Q/K."""
@@ -179,6 +196,53 @@ def asfp8_rope_length(q_shape):
 def h3_rope_length(q_shape):
     """H3 packed-token sequence length (the S in [B, S, heads, dim])."""
     return int(q_shape[1])
+
+
+def h3_attn_layout_after_rope(q_shape):
+    """Q/K as skip_reshape SDPA sees it: [B, heads, S, dim] after the transpose."""
+    batch, seq, heads, dim = q_shape
+    return (int(batch), int(heads), int(seq), int(dim))
+
+
+def fused_rope_matches_h3(q_shape):
+    """True only if the fused kernel's L is already the packed sequence."""
+    return asfp8_rope_length(q_shape) == h3_rope_length(q_shape)
+
+
+def torch_device_type():
+    """ComfyUI's compute device, or '' when core is not loaded (tests)."""
+    try:
+        import comfy.model_management as mm
+        return mm.get_torch_device().type
+    except Exception:
+        return ""
+
+
+def refuse_mps_accel(settings, device_type=None):
+    """Refuse NVIDIA-only Continuity accelerators when the device is MPS.
+
+    Sage, kitchen int8, SLA and Spectrum are CUDA/Triton. fp16 accumulation
+    is a cuBLAS flag. Chunked FFN and the step caches stay — they do not
+    swap the attention kernel.
+    """
+    kind = torch_device_type() if device_type is None else device_type
+    if kind != "mps":
+        return
+    attention = getattr(settings, "attention", "default")
+    if attention in NVIDIA_ATTENTION:
+        raise ValueError(
+            f"attention {attention!r} is an NVIDIA path (sage / kitchen int8 / "
+            f"SLA). On Apple GPU leave attention on 'default' — that is the "
+            f"Metal-safe H3 path this pack forces."
+        )
+    if getattr(settings, "spectrum", False):
+        raise ValueError(
+            "Spectrum is an NVIDIA accelerator. Leave it off on Apple GPU."
+        )
+    if getattr(settings, "fp16_accumulation", False):
+        raise ValueError(
+            "fp16 accumulation is a CUDA cuBLAS flag. Leave it off on Apple GPU."
+        )
 
 
 def _disarm_asfp8(tag):
@@ -329,6 +393,7 @@ def protect_h3_mps():
     if any(patched):
         print("[Continuity Mac] forced MPS H3 attention: zeros not empty "
               "(ComfyUI#15804), bf16→fp32 upcast, 2^30 chunk cap "
-              "(ComfyUI#14837). AppleSilicon-FP8 fused RoPE/RMSNorm off.",
+              "(ComfyUI#14837). AppleSilicon-FP8 fused RoPE/RMSNorm off; "
+              "pytorch SDPA left off (dense QK). Sage/kitchen/SLA refused.",
               flush=True)
     return env

@@ -19,11 +19,12 @@ check("turbo default is the TaoMate file already in models/loras",
       metal.TURBO_LORA, "taomate_h3_3step_comfy.safetensors")
 check("TaoMate is the first turbo preset",
       metal.LORA_PRESETS[0]["match"], r"taomate")
-check("TaoMate owns strength and row, not the quality step table",
+check("TaoMate owns the 3-step table and hides the quality stops",
       (metal.LORA_PRESETS[0]["strength"], metal.LORA_PRESETS[0].get("steps"),
-       metal.LORA_PRESETS[0]["row"]),
-      (0.8, None, {"sampler_name": "euler", "scheduler": "simple"}))
-check("Tutu also leaves draft/med/good to the family",
+       metal.LORA_PRESETS[0].get("fixed"), metal.LORA_PRESETS[0]["row"]),
+      (0.8, metal.TAOMATE_STEPS, True,
+       {"sampler_name": "euler", "scheduler": "simple"}))
+check("Tutu still leaves draft/med/good to the family",
       metal.LORA_PRESETS[2].get("steps"), None)
 
 check("FastH3 ConvRot is a CUDA stack name",
@@ -60,6 +61,43 @@ metal.refuse_cuda_stack(_Weights({
     "clip": "qwen3vl_32b_minimax_h3_bf16.safetensors",
 }))
 
+class _Accel:
+    def __init__(self, **kwargs):
+        self.attention = kwargs.get("attention", "default")
+        self.spectrum = kwargs.get("spectrum", False)
+        self.fp16_accumulation = kwargs.get("fp16_accumulation", False)
+
+metal.refuse_mps_accel(_Accel(attention="sage"), device_type="cpu")
+try:
+    metal.refuse_mps_accel(_Accel(attention="sage"), device_type="mps")
+except ValueError as err:
+    sage_refused = str(err)
+else:
+    sage_refused = ""
+check("MPS refuses sage attention", "NVIDIA path" in sage_refused, True)
+try:
+    metal.refuse_mps_accel(_Accel(attention="kitchen"), device_type="mps")
+except ValueError as err:
+    kitchen_refused = "NVIDIA path" in str(err)
+else:
+    kitchen_refused = False
+check("MPS refuses kitchen int8", kitchen_refused, True)
+try:
+    metal.refuse_mps_accel(_Accel(spectrum=True), device_type="mps")
+except ValueError as err:
+    spectrum_refused = "Spectrum" in str(err)
+else:
+    spectrum_refused = False
+check("MPS refuses Spectrum", spectrum_refused, True)
+try:
+    metal.refuse_mps_accel(_Accel(fp16_accumulation=True), device_type="mps")
+except ValueError as err:
+    accum_refused = "cuBLAS" in str(err)
+else:
+    accum_refused = False
+check("MPS refuses fp16 accumulation", accum_refused, True)
+metal.refuse_mps_accel(_Accel(attention="default"), device_type="mps")
+
 # MiniMax H3 Attention.forward views Q as [1, S, heads, dim]. The
 # AppleSilicon-FP8 fused kernel takes L from shape[-2], i.e. heads.
 h3_qk = (1, 800, 40, 96)
@@ -69,6 +107,10 @@ check("AppleSilicon-FP8 fused RoPE would use heads as L",
       metal.asfp8_rope_length(h3_qk), 40)
 check("that mismatch is what made the VAE decode blocky noise",
       metal.asfp8_rope_length(h3_qk) != metal.h3_rope_length(h3_qk), True)
+check("fused RoPE is not safe for H3's Q/K layout as-is",
+      metal.fused_rope_matches_h3(h3_qk), False)
+check("after RoPE, H3 attention is already [B, heads, S, dim]",
+      metal.h3_attn_layout_after_rope(h3_qk), (1, 40, 800, 96))
 
 # 56 heads, 20k packed tokens, query chunk 4096: the 512 GB Mac path.
 q_chunk, kv_chunk = metal.mps_attn_chunks(56, 20000, 4096, 20000)

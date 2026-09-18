@@ -368,6 +368,11 @@ def plan(settings, sampler_steps=None):
     how a node gets run, never which nodes or with what. `sampler_steps` is the
     run's real step count, which TeaCache needs to place its skip window.
     """
+    try:
+        from . import metal
+        metal.refuse_mps_accel(settings)
+    except ImportError:
+        pass
     if settings.block_cache == "easy" and settings.spectrum:
         raise ValueError(
             "Spectrum cannot be combined with EasyCache — its own conflict "

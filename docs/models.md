@@ -58,9 +58,9 @@ From [Robert1212star/TaoMate-H3-3Step-ComfyUI](https://huggingface.co/Robert1212
 |---|---|
 | `taomate_h3_3step_comfy.safetensors` | `loras` |
 
-Strength 0.8, Euler / simple. Draft / med / good stay the family's 4 / 6 / 8
-so another turbo LoRA is still a quality pick. h3-ws runs this file at 3
-steps on native FL2VA; set the step count yourself if you want that.
+Strength 0.8, Euler / simple, **3 steps** — that is the distill, same as
+h3-ws. Draft / med / good hide on TaoMate because they would all write 3.
+Another turbo LoRA (LightX2V, Tutu, PDD) still owns its own quality table.
 
 Optional filename presets still match LightX2V
 ([lightx2v/Minimax-h3-Turbo](https://huggingface.co/lightx2v/Minimax-h3-Turbo),

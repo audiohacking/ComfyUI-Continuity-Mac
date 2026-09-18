@@ -54,7 +54,8 @@ This pack forces the Metal path. After restart the console must say
 all look like noise and none of them log an error:
 
 - AppleSilicon-FP8 fused RoPE takes `L` from `x.shape[-2]`. H3 Q/K is
-  `[B, S, heads, dim]`, so every token is rotated by head index.
+  `[B, S, heads, dim]`, so every token is rotated by head index. Leave
+  that kernel off until a wrap permutes to `[B, heads, S, dim]`.
 - Sub-quadratic attention seeds scores from `torch.empty`; MPS
   `baddbmm(beta=0)` broadcasts those NaNs ([ComfyUI#15804](https://github.com/Comfy-Org/ComfyUI/issues/15804)). H3 is bf16, and
   ComfyUI's macOS upcast only covered fp16.
@@ -63,20 +64,27 @@ all look like noise and none of them log an error:
   ([ComfyUI#14837](https://github.com/Comfy-Org/ComfyUI/issues/14837)).
 
 Do not switch to pytorch SDPA: H3's packed sequence tried to allocate a
-several-hundred-GB buffer and aborted. The live preview also needs
-madebyollin's
+several-hundred-GB buffer and aborted. After RoPE the layout *is* what
+SDPA expects (`[B, heads, S, dim]`), so the next speed path is
+[mtlflashattn](https://github.com/pawel-mazurkiewicz/mtlflashattn) (never
+forms QK) gated so a kernel miss cannot fall back to dense SDPA — not
+turning stock SDPA on. The live preview also needs madebyollin's
 [`taeh3.safetensors`](https://github.com/madebyollin/taehv/blob/main/safetensors/taeh3.safetensors)
 (~22 MB, keys `decoder.1.weight`) in `models/vae_approx` — a 320 MB SD VAE
 dumped under that name is latent2rgb mush, not the shot.
 
-Leave attention on **default**. Turbo on this fork offers TaoMate
-(`taomate_h3_3step_comfy.safetensors` at strength 0.8); draft / med / good
-stay 4 / 6 / 8. Do not pick FastH3, NVFP4, ConvRot or `fp8_scaled` H3
-files — those are the CUDA packed stack. h3-ws runs native MiniMax-H3
-FL2VA; ComfyUI wants the matching Comfy-Org `*_pruned_bf16` DiTs and
-`qwen3vl_32b_minimax_h3_bf16.safetensors`. Sage, SLA and Spectrum are NVIDIA
-paths. The weights live under ComfyUI's `models/` tree (and the Hugging Face
-hub cache / h3-ws, which the pack also searches).
+Leave attention on **default**. Sage, kitchen int8, SLA, Spectrum and
+fp16 accumulation are NVIDIA paths and this pack refuses them on Apple
+GPU; chunked FFN and the step caches still run. Turbo on this fork
+offers TaoMate (`taomate_h3_3step_comfy.safetensors` at strength 0.8,
+Euler/simple, **3 steps** — re-throw turbo after a restart to pick that
+up). LightX2V and Tutu still use the family's 4 / 6 / 8. Do not pick
+FastH3, NVFP4, ConvRot or `fp8_scaled` H3 files — those are the CUDA
+packed stack. h3-ws runs native MiniMax-H3 FL2VA; ComfyUI wants the
+matching Comfy-Org `*_pruned_bf16` DiTs and
+`qwen3vl_32b_minimax_h3_bf16.safetensors`. The weights live under
+ComfyUI's `models/` tree (and the Hugging Face hub cache / h3-ws, which
+the pack also searches).
 
 ### CUDA OOM with `HostBuffer.read_file_slice` on a long render
 

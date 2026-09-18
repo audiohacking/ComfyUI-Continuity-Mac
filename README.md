@@ -45,8 +45,7 @@ Weights are not downloaded. Put files in ComfyUI's `models/` tree (or leave
 them where they already are). A prestartup also registers the Hugging Face
 hub cache and a sibling [h3-ws](https://github.com/lmangani/h3-ws) checkout
 when those exist. Turbo on this fork offers **TaoMate** as a filename
-preset (strength 0.8, Euler/simple); draft / med / good stay 4 / 6 / 8.
-Leave attention
+preset (strength 0.8, Euler/simple, 3 steps). Leave attention
 on **default**. See [docs/models.md](docs/models.md#apple-metal).
 
 ## What it does
@@ -152,8 +151,8 @@ your hardware from weights you already have.
 
 See [docs/models.md](docs/models.md) for which files you need and where they go.
 On this fork, turbo for H3 offers TaoMate
-(`taomate_h3_3step_comfy.safetensors` in `models/loras`) at strength 0.8;
-draft / med / good stay the family's step counts.
+(`taomate_h3_3step_comfy.safetensors` in `models/loras`) at strength 0.8
+and 3 steps; LightX2V and Tutu keep the family's quality counts.
 
 There is also an optional **neural refiner**: NVIDIA's DLSS 5 neural renderer
 as a material pass over finished stills and clips (skin, hair, fabric, contact
