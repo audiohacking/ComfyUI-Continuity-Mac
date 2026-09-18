@@ -1,13 +1,17 @@
 [project]
 name = "continuity-metal"
-version = "3.0.0"
+version = "3.0.1"
 description = "Apple Silicon fork of Continuity: one node for MiniMax H3, LTX 2.5 and the still families on Metal / MPS. Not the CUDA pack, and not an MLX / h3.c runner."
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = []
+# MacOS only. Do not declare "Environment :: GPU :: Apple Metal":
+# Manager treats that as a hard match against the machine's reported
+# accelerator, and Desktop often reports mps / nothing instead of that
+# string — an M5 then looks like it has no Metal GPU. fp8-mps-metal
+# (same publisher) ships with no accelerator list and installs fine.
 classifiers = [
     "Operating System :: MacOS",
-    "Environment :: GPU :: Apple Metal",
 ]
 
 [project.urls]

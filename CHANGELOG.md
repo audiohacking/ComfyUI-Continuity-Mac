@@ -6,6 +6,13 @@ exactly as it was written, wall of text and all.
 
 ## Unreleased
 
+**3.0.1 drops the registry "Apple Metal GPU" classifier so Manager
+will install on any Mac.** 3.0.0 published `supported_accelerators =
+["GPU :: Apple Metal"]`. Desktop compares that to the machine's
+reported accelerator; when it reports `mps` or nothing (seen on M5)
+the install is refused as "no Metal GPU". The OS classifier stays
+macOS. Re-run the publish Action to ship this version.
+
 **Continuity Metal publishes to the Comfy registry from a manual GitHub
 Action.** The node id is `continuity-metal` under publisher
 `audiohacking`, so it does not collide with roadmaus's CUDA pack. The
