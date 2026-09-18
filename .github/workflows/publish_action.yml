@@ -1,7 +1,4 @@
 # Manual publish to the Comfy registry under @audiohacking.
-# Create a publisher id `audiohacking` on https://registry.comfy.org if you
-# have not, then add the registry API key as the repo secret
-# REGISTRY_ACCESS_TOKEN. Do not put the token in this file.
 name: Publish to Comfy registry
 on:
   workflow_dispatch:
