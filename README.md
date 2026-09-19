@@ -1,8 +1,6 @@
 # Continuity Metal
 
-Apple Silicon fork of [ComfyUI-Continuity](https://github.com/roadmaus/ComfyUI-Continuity).
-It still drives ComfyUI core — MiniMax H3, LTX 2.5 and the still families —
-on **Metal / MPS**. It does not replace the sampler with h3.c or MLX.
+Apple Silicon fork of [ComfyUI-Continuity](https://github.com/roadmaus/ComfyUI-Continuity) optimized for **Metal / MPS**
 
 **NVIDIA / CUDA users:** this is not that pack. Install the original instead:
 [roadmaus/ComfyUI-Continuity](https://github.com/roadmaus/ComfyUI-Continuity).
