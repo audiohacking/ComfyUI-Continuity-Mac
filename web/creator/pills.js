@@ -12,7 +12,7 @@ import { UPSCALE_MODES, DEFAULT_REFINE_DENOISE, MIN_REFINE_DENOISE, MAX_REFINE_D
          DEFAULT_REFINE_UPSCALER, DEFAULT_REFINE_STEPS, MAX_REFINE_STEPS,
          TRAINED_REFINE, BICUBIC_REFINE,
          twoPass, sampleEdge, emptyFace, isClip, pieceFamily, refineOf,
-         redetailTarget, capabilityOf,
+         redetailTarget, capabilityOf, faceDetectorReady,
          MIN_FACE_CANVAS, MAX_FACE_CANVAS,
          MIN_FACE_DENOISE, MAX_FACE_DENOISE,
          emptyNeural, NEURAL_DEFAULTS, NEURAL_RANGES,
@@ -957,19 +957,33 @@ export function openResolutionPopover(anchor, target, geometry, commit) {
  * @param {object} spec
  * @param {object} spec.target  the piece or timeline, mutated in place
  * @param {() => void} spec.commit
+ * @param {object} [spec.files] the weights catalog's `{slot: [filenames]}` —
+ *   what decides whether SAM3 is on disk. The caller already loads it for the
+ *   weights pill; this module does not import that listing, so the two never
+ *   form a cycle.
  */
-export function facesPill({ target, commit }) {
+export function facesPill({ target, commit, files = null }) {
   const face = target.face ?? emptyFace();
+  const ready = faceDetectorReady(files);
+  // Only once the listing has answered: a race with an empty catalog must not
+  // clear a face pass the user left on.
+  if (face.on && ready === false) {
+    face.on = false;
+    commit();
+  }
   return el("button", {
-    class: `mmc-pill${face.on ? " accel-on" : ""}`,
-    title: face.on
-      ? t("The face pass is on: every pass has its face re-drawn at {edge} px and "
-        + "composited back. Needs a SAM3 checkpoint in the weights control.",
-          { edge: face.canvas })
-      : t("The face pass is off. Switch it on for shots where the head is small in "
-        + "frame — that is where H3 draws a face worst, and it is not something a "
-        + "bigger canvas fixes."),
-    onclick: (event) => openFacesPopover(event.currentTarget, { target, commit }),
+    class: `mmc-pill${face.on ? " accel-on" : ""}${ready === false ? " mmc-pill-muted" : ""}`,
+    title: ready === false
+      ? t("The face pass needs a SAM3 checkpoint in models/checkpoints. None is "
+        + "on disk, so the pass stays off.")
+      : face.on
+        ? t("The face pass is on: every pass has its face re-drawn at {edge} px and "
+          + "composited back. Needs a SAM3 checkpoint in the weights control.",
+            { edge: face.canvas })
+        : t("The face pass is off. Switch it on for shots where the head is small in "
+          + "frame — that is where H3 draws a face worst, and it is not something a "
+          + "bigger canvas fixes."),
+    onclick: (event) => openFacesPopover(event.currentTarget, { target, commit, files }),
   }, [el("span", { text: face.on ? t("faces") : t("faces off") })]);
 }
 
@@ -996,12 +1010,15 @@ export function motionPill({ segment, on, commit }) {
 
 
 /** On or off, and — on — the two knobs. The card switches are on the cards. */
-export function openFacesPopover(anchor, { target, commit }) {
+export function openFacesPopover(anchor, { target, commit, files = null }) {
   const pop = el("div", { class: "mmc-pop mmc-faces-pop" });
   const body = el("div");
 
   const render = () => {
     const face = target.face ?? (target.face = emptyFace());
+    const ready = faceDetectorReady(files);
+    if (face.on && ready === false) face.on = false;
+    const blocked = ready === false;
     const rows = [
       el("div", { class: "mmc-pop-title", text: t("Face pass") }),
       el("button", {
@@ -1016,14 +1033,26 @@ export function openFacesPopover(anchor, { target, commit }) {
         el("span", { class: "mmc-radio" }),
       ]),
       el("button", {
-        class: "mmc-opt",
+        class: `mmc-opt${blocked ? " mmc-opt-disabled" : ""}`,
         "aria-checked": face.on,
-        onclick: () => { face.on = true; render(); commit(); },
+        "aria-disabled": blocked,
+        title: blocked
+          ? t("Put a SAM3 checkpoint in models/checkpoints first — nothing here "
+            + "can find a face without one.")
+          : undefined,
+        onclick: () => {
+          if (blocked) return;
+          face.on = true;
+          render();
+          commit();
+        },
       }, [
         el("span", { class: "mmc-opt-label mmc-opt-col" }, [
           el("span", { text: t("on") }),
           el("span", { class: "mmc-opt-sub",
-                       text: t("re-draw the face after each pass") }),
+                       text: blocked
+                         ? t("needs a SAM3 file in models/checkpoints")
+                         : t("re-draw the face after each pass") }),
         ]),
         el("span", { class: "mmc-radio" }),
       ]),

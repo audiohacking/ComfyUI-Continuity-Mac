@@ -31,7 +31,7 @@ import { refine, refineButton, chosenModel as refineModel } from "./refine.js";
 import { adopted, blobIO, samplingBar } from "./sampling.js";
 import { Stage, stageSource } from "./stage.js";
 import { watchSubmittedPrompts, submittedPrompt } from "./queue.js";
-import { familyPill, weightsPill, loadCatalog, adoptWeights } from "./models.js";
+import { familyPill, weightsPill, loadCatalog, adoptWeights, catalogFiles } from "./models.js";
 import * as S from "./state.js";
 import * as Turbo from "./turbo.js";
 import * as Guide from "./guide.js";
@@ -4389,7 +4389,8 @@ export class TimelineBody {
         // Only where the family has the pass, or where one is already on —
         // see the same gate, and the same reason, on the Creator's own row.
         ...(S.canDo(this.timeline, "face") || S.faceAnywhere(this.timeline)
-          ? [facesPill({ target: this.timeline, commit: () => this.commit() })] : []),
+          ? [facesPill({ target: this.timeline, commit: () => this.commit(),
+                         files: catalogFiles() })] : []),
         // The DLSS 5 refiner, family-neutral: it runs over decoded frames.
         neuralPill({ target: this.timeline, commit: () => this.commit(),
                      // TimelineBody has no geometry() method; the modal does.

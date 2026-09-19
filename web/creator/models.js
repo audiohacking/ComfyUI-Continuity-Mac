@@ -128,8 +128,11 @@ export function weightsPill({ piece, models, checkpoints, onChange, turbo, face 
   // counted only the family's would read "weights" over a render the queue is
   // about to refuse. The ids cannot be merged — four of the backend's are the
   // family's own spelled the same way — but the labels are what is shown.
+  // Pass the catalog so a remembered pick that is not on disk counts as
+  // missing — same refuse `models.check` makes at expand time.
   const missing = [
-    ...S.missingModels(models, S.requiredModels(routed, face, family), family)
+    ...S.missingModels(models, S.requiredModels(routed, face, family), family,
+                       catalogFiles())
       .map((field) => t(label_[field])),
     ...missingUpscalerLabels(piece),
   ];

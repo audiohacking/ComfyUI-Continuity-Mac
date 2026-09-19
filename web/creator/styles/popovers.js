@@ -126,6 +126,9 @@ export const css = `
    dimmed, no hand, no hover. */
 .mmc-opt:disabled { opacity: .5; cursor: default; }
 .mmc-opt:disabled:hover { background: none; }
+.mmc-opt[aria-disabled="true"], .mmc-opt-disabled { opacity: .5; cursor: default; }
+.mmc-opt[aria-disabled="true"]:hover, .mmc-opt-disabled:hover { background: none; }
+.mmc-pill-muted { opacity: .55; }
 .mmc-opt-label { display: flex; align-items: center; gap: 10px; }
 .mmc-aspect-glyph {
   width: 18px; height: 18px; flex: none;

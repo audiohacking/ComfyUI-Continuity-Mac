@@ -219,7 +219,7 @@ for entry in h3["weights"]:
 # disagreed.
 check("the opt-in H3 slots say they are opt-in",
       sorted(w["id"] for w in h3["weights"] if not w["required"]),
-      ["control", "cutout", "upscaler"])
+      ["control", "cutout", "sam3", "upscaler"])
 
 fl2va_slot = next(w for w in h3["weights"] if w["id"] == "fl2va")
 check("h3 FL2VA guess prefers packed bf16, not a FastH3 student",

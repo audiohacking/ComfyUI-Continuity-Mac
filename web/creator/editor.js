@@ -30,7 +30,7 @@ import { openAspectPopover, openResolutionPopover, openChoicePopover, facesPill,
 import { blobIO, samplingBar, segmentSeedPill, seedPill } from "./sampling.js";
 import { Stage, stageSource } from "./stage.js";
 import { openRestyle } from "./restyle.js";
-import { familyPill, weightsPill, loadCatalog, adoptWeights } from "./models.js";
+import { familyPill, weightsPill, loadCatalog, adoptWeights, catalogFiles } from "./models.js";
 import * as Turbo from "./turbo.js";
 import * as Guide from "./guide.js";
 import { viewUrl, thumbUrl, probe, probeAudio, primeSettings, buildPlate, stillUrl } from "./api.js";
@@ -1670,7 +1670,8 @@ export class CreatorEditor {
         // method raises. A pill you can switch off is the difference between a
         // render that says what is wrong and one that stops.
         ...(S.canDo(this.piece, "face") || this.piece.face?.on
-          ? [facesPill({ target: this.piece, commit: () => this.commit() })] : []),
+          ? [facesPill({ target: this.piece, commit: () => this.commit(),
+                         files: catalogFiles() })] : []),
         // The motion fix, which on a strip is a chip on each card: a lone
         // shot has no card, so its switch sits here. Only where the family
         // has the pass, and this editor is the node's face rather than a

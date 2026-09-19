@@ -300,29 +300,46 @@ def _clean(value):
 
 
 def check(weights, needed, where=None):
-    """Refuse now if a file this render needs was never picked.
+    """Refuse now if a file this render needs was never picked or is not on disk.
 
     `needed` is the slot names *this* render must have filled, which is the
     family's own reading of its table: a text-only render never asks for the
     reference weights, a soundless one never asks for the audio VAE, and a
     detector nothing runs is a file nobody has to own.
 
+    A remembered filename that is not under `models/` is the same refusal: the
+    face pass used to spend a full sample and only then discover SAM3 was
+    missing. Existence is checked here, before any loader or sampler runs.
+
     `where[slot]` names the first generation that reached for a routed slot, so
     the sentence says which segment is asking rather than only what is missing.
     """
+    import os
+
+    import folder_paths
+
     for name in needed:
         slot = weights.slots[name]
         filename = weights.get(name)
-        if filename:
-            if slot.kind:
-                verify_kind(slot, filename)
-            continue
-        blame = f"{where[name]} routes to it — " if where and name in where else ""
-        raise ValueError(
-            f"{blame}{slot.label.capitalize()} has not been picked. "
-            f"Open the node's 'weights' control and choose a file from "
-            f"models/{slot.folder}."
-        )
+        if not filename:
+            if slot.missing:
+                raise ValueError(slot.missing)
+            blame = f"{where[name]} routes to it — " if where and name in where else ""
+            raise ValueError(
+                f"{blame}{slot.label.capitalize()} has not been picked. "
+                f"Open the node's 'weights' control and choose a file from "
+                f"models/{slot.folder}."
+            )
+        path = folder_paths.get_full_path(slot.folder, filename)
+        if not path or not os.path.isfile(path):
+            raise ValueError(
+                f"{slot.label.capitalize()} is set to '{filename}' but that "
+                f"file is not in models/{slot.folder}. Put it there, pick "
+                f"another file in the node's 'weights' control, or switch off "
+                f"the pass that needs it."
+            )
+        if slot.kind:
+            verify_kind(slot, filename)
 
 
 def verify_kind(slot, filename):

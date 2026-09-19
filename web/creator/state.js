@@ -836,12 +836,38 @@ export function routedCheckpoints(models, derived) {
   return route === "auto" ? derived : [route];
 }
 
-/** Which required fields are still empty, in listing order — the family's own
- *  slot order, which is the order the popover draws the rows in. */
-export function missingModels(models, required, family = DEFAULT_VIDEO_FAMILY) {
+/** Which required fields are still empty or not on disk, in listing order —
+ *  the family's own slot order, which is the order the popover draws the rows
+ *  in.
+ *
+ *  `files` is the catalog's `{slot: [filenames]}` when the listing has loaded.
+ *  A remembered pick that is not in that list is missing the same way an empty
+ *  slot is — `models.check` refuses it at expand time, and the pill has to say
+ *  so here rather than after a twelve-minute sample. Absent `files`, or a slot
+ *  the catalog has not answered for, keeps the empty-only reading so a listing
+ *  that has not arrived yet does not paint every row orange. */
+export function missingModels(models, required, family = DEFAULT_VIDEO_FAMILY,
+                              files = null) {
   const order = modelFields(family);
-  return required.filter((field) => !models[field])
-    .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  return required.filter((field) => {
+    const name = models?.[field];
+    if (!name) return true;
+    const listed = files?.[field];
+    if (Array.isArray(listed) && !listed.includes(name)) return true;
+    return false;
+  }).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+}
+
+/** Whether the face pass can be switched on: the catalog has at least one
+ *  SAM3 checkpoint to pick. No file on disk means the toggle stays off — the
+ *  queue would only refuse it after expand, and turning it on with nowhere to
+ *  point is noise.
+ *
+ *  Returns `null` while the catalog has not answered for `sam3` yet, so a
+ *  draw that races the listing does not force the pass off and then on again. */
+export function faceDetectorReady(files) {
+  if (!files || !Array.isArray(files.sam3)) return null;
+  return files.sam3.length > 0;
 }
 
 // ---- turbo ------------------------------------------------------------------

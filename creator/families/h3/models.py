@@ -41,8 +41,16 @@ SLOTS = {
     # and its own text encoder together — and so is picked from `checkpoints`
     # and loaded by `facepass` itself rather than by a loader emitted here. It
     # is in the table because it is a file the user picks in the same control,
-    # not because it becomes a link.
-    "sam3": core.Slot("checkpoints", "the face detector"),
+    # not because it becomes a link. Optional: a render with the face pass off
+    # must not demand a detector nothing loads — `needs(..., face=True)` is
+    # what puts it on the check list, and the sentence below is what a face
+    # pass with nothing picked says.
+    "sam3": core.Slot(
+        "checkpoints", "the face detector", optional=True,
+        missing="This piece has the face pass on and no SAM3 checkpoint has "
+                "been picked. Open the node's 'weights' control and choose a "
+                "file from models/checkpoints — sam3.1_multiplex_fp16 or "
+                "another SAM3 multiplex — or switch the face pass off."),
     # The matte the *picker* takes, when you press the scissors on a picture.
     # In the table because it is a file the user picks in the same control, not
     # because it becomes a link: no graph this pack builds loads it any more, and
