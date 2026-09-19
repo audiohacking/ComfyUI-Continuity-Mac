@@ -6,6 +6,16 @@ exactly as it was written, wall of text and all.
 
 ## Unreleased
 
+**3.0.3 refuses features whose weight files are not on disk,
+before the sampler runs.** A remembered SAM3 pick with the face
+pass on used to sample for minutes and only then raise
+FileNotFoundError — after which re-queues could cache-hit empty
+and look like a 0.1s success. `models.check` now verifies every
+needed file exists under `models/`; SAM3 is opt-in (only required
+when face is on); the faces pill stays off when no SAM3
+checkpoint is listed. Re-run the publish Action to ship this
+version.
+
 **3.0.2 ships the Ref2VA Metal fixes: finite video encode on
 GPU, AAC no longer dies on NaN audio, and the 400 GB OOM was
 the allocator watermark not the model.** Re-run the publish
