@@ -6,6 +6,36 @@ exactly as it was written, wall of text and all.
 
 ## Unreleased
 
+**3.0.2 ships the Ref2VA Metal fixes: finite video encode on
+GPU, AAC no longer dies on NaN audio, and the 400 GB OOM was
+the allocator watermark not the model.** Re-run the publish
+Action to ship this version.
+
+**H3 was not using 400 GB — AppleSilicon-FP8's MPS watermark was.**
+Live tensors at the OOM were 56 GB (49 GB text encoder + 5 GB
+video VAE). The other 407 GB was that pack's low=0.8 / high=1.0
+holding ~80% of a 512 GB Mac's recommended pool, then refusing a
+544 MB tile at the 464 GB cap. This pack now sets low=0.2 and
+disables the cap on ≥256 GB machines. The fp32 encoder.clone()
+that doubled the VAE on top of the TE is gone; conv/norm compute
+in fp32 per op and stay on the GPU.
+
+**Ref2VA on Metal was black because the video VAE encode is NaN.**
+The DiT attention patches already covered both checkpoints. FL2VA
+never encodes a video reference; Ref2VA does, and MPS multi-frame
+H3 video VAE encode fills the latent with NaN. That was cached and
+fed to the sampler, so decode wrote a black clip and AAC refused
+the soundtrack. Multi-frame encode stays on the GPU and runs the
+encoder in fp32 (fp16 3D conv/GroupNorm was the NaN). The
+reference cache drops any NaN entry instead of reusing it.
+
+**A Ref2VA soundtrack with NaN/Inf still writes the mp4.** AAC
+refuses those samples (`avcodec_send_frame` EINVAL). The H3 audio
+VAE on MPS can emit them after a finished sample; the picture is
+already on disk. Spill and mux now replace non-finite samples
+(and clamp to [-1, 1]) so the file comes out instead of throwing
+after a long run.
+
 **3.0.1 drops the registry "Apple Metal GPU" classifier so Manager
 will install on any Mac.** 3.0.0 published `supported_accelerators =
 ["GPU :: Apple Metal"]`. Desktop compares that to the machine's

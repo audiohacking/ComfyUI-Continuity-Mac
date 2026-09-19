@@ -174,6 +174,20 @@ check("a reel with no sound has no audio stream", samples, 0)
 with av.open(silent_path) as container:
     check("...and none in the container either", len(container.streams.audio), 0)
 
+# The H3 audio VAE on MPS can decode a finished latent into NaN/Inf. AAC
+# refuses those with EINVAL; the picture is already written. The muxer
+# replaces them so the mp4 still comes out.
+import numpy as np
+dirty = part(12, seconds=0.5)
+poked = np.memmap(dirty["pass"]["audio_path"], dtype=np.float32, mode="r+")
+poked.flat[0] = float("nan")
+poked.flat[-1] = float("inf")
+poked.flush()
+del poked
+frames, _, samples, _ = written([dirty])
+check("a soundtrack with NaN/Inf still writes", frames, 12)
+close("...and keeps the picture's length", samples, int(0.5 * RATE), 2048)
+
 # ---- a supplied clip, spliced rather than decoded ---------------------------
 #
 # The point of the file part is that the footage never becomes a tensor, so

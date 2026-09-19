@@ -18,7 +18,11 @@ from creator import metal  # noqa: E402
 
 metal.register_search_paths()
 metal.shield_h3_mps()
+low, high = (os.environ.get("PYTORCH_MPS_LOW_WATERMARK_RATIO"),
+             os.environ.get("PYTORCH_MPS_HIGH_WATERMARK_RATIO"))
 print("[Continuity Mac] AppleSilicon-FP8 fused RoPE and fused RMSNorm off. "
       "H3 Q/K is [B,S,heads,dim]; that RoPE kernel indexes by heads. "
-      "Attention patches apply when this pack imports.",
+      "MPS watermark low=%s high=%s (overrides ASFP8 0.8/1.0). "
+      "Attention patches apply when this pack imports."
+      % (low, high),
       flush=True)

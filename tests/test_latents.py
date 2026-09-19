@@ -121,6 +121,21 @@ check("key order does not matter",
 check("a changed part is a different key",
       latents.key({"a": 1}) == latents.key({"a": 2}), False)
 
+# MPS video VAE encode used to persist NaN. A hit of that is a black Ref2VA
+# clip, so the store treats it as a miss and deletes the file.
+poison = torch.zeros(2, 4)
+poison[0, 0] = float("nan")
+latents.store("poison", {"latent": poison}, {"latent_h": 1})
+check("a NaN encode is not kept on disk", "poison.safetensors" in entries(), False)
+latents.forget()
+# Plant one the way a previous process would have, then fetch has to drop it.
+from safetensors.torch import save_file
+save_file({"latent": poison}, os.path.join(STORE, "poison.safetensors"),
+          metadata={"mmc": "{}"})
+check("a stored NaN latent is a miss, not a black clip",
+      latents.fetch("poison"), None)
+check("...and the file is gone", "poison.safetensors" in entries(), False)
+
 # A half-written entry has to read as a miss. It cannot be repaired and it
 # must not be trusted, so it is deleted and the encode it stood in for runs.
 with open(os.path.join(STORE, "alpha.safetensors"), "r+b") as handle:

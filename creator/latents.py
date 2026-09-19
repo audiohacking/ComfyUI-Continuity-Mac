@@ -337,6 +337,9 @@ def fetch(name):
         # answered out of memory all week has been come back for all week.
         # Without this the hottest references are the ones that age off disk.
         _touch(path)
+        if not _tensors_finite(tensors):
+            _drop(name, path)
+            return None
         return ({field: value.clone() for field, value in tensors.items()},
                 dict(meta), "memory")
 
@@ -359,10 +362,37 @@ def fetch(name):
             pass
         return None
 
+    if not _tensors_finite(tensors):
+        # MPS video VAE encode used to persist NaN; feeding that to Ref2VA
+        # made a black clip. Drop it so the next render encodes again.
+        _drop(name, path)
+        return None
+
     _touch(path)
     _remember(name, tensors, meta)
     return ({field: value.clone() for field, value in tensors.items()},
             dict(meta), "disk")
+
+
+def _tensors_finite(tensors):
+    """False when a floating tensor has NaN/Inf. uint8 presentation is fine."""
+    for value in tensors.values():
+        if not hasattr(value, "is_floating_point"):
+            continue
+        if value.is_floating_point() and value.numel() and not bool(value.isfinite().all()):
+            return False
+    return True
+
+
+def _drop(name, path=None):
+    """Forget a poison entry so the next render encodes again."""
+    _memory.pop(name, None)
+    target = path if path is not None else _path(name)
+    try:
+        if os.path.isfile(target):
+            os.remove(target)
+    except OSError:
+        pass
 
 
 def store(name, tensors, meta):
@@ -378,6 +408,8 @@ def store(name, tensors, meta):
     """
     tensors = {field: value.detach().to("cpu").contiguous()
                for field, value in tensors.items()}
+    if not _tensors_finite(tensors):
+        return {field: value.clone() for field, value in tensors.items()}
     _remember(name, tensors, meta)
     # Clones, for the reason `fetch` hands out clones: what the memory tier
     # holds is private to it, or the second render keys onto whatever the first

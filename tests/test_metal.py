@@ -121,15 +121,28 @@ check("the pack's chunk cap stays under 2^30 elements",
 
 was_rope = os.environ.get(metal.ASFP8_ROPE_ENV)
 was_norm = os.environ.get(metal.ASFP8_NORM_ENV)
+was_low = os.environ.get("PYTORCH_MPS_LOW_WATERMARK_RATIO")
+was_high = os.environ.get("PYTORCH_MPS_HIGH_WATERMARK_RATIO")
 try:
     os.environ[metal.ASFP8_ROPE_ENV] = "on"
     os.environ[metal.ASFP8_NORM_ENV] = "on"
+    os.environ["PYTORCH_MPS_LOW_WATERMARK_RATIO"] = "0.8"
+    os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "1.0"
     check("protect_h3_mps turns fused RoPE off before that pack installs",
           metal.protect_h3_mps(), "off")
     check("...and fused RMSNorm", os.environ.get(metal.ASFP8_NORM_ENV), "off")
+    low, high = metal.shield_mps_watermark()
+    check("MPS low watermark reclaims cache instead of holding 80%",
+          low, "0.2")
+    check("...and high is 0.0 on a ≥256 GB Mac or 1.0 otherwise",
+          high in ("0.0", "1.0"), True)
+    if metal.physical_ram_bytes() >= 256 * 1024 ** 3:
+        check("a 512 GB Mac disables the false 464 GB cap", high, "0.0")
 finally:
     for key, was in ((metal.ASFP8_ROPE_ENV, was_rope),
-                     (metal.ASFP8_NORM_ENV, was_norm)):
+                     (metal.ASFP8_NORM_ENV, was_norm),
+                     ("PYTORCH_MPS_LOW_WATERMARK_RATIO", was_low),
+                     ("PYTORCH_MPS_HIGH_WATERMARK_RATIO", was_high)):
         if was is None:
             os.environ.pop(key, None)
         else:

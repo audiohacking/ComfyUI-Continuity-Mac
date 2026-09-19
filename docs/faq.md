@@ -86,6 +86,31 @@ matching Comfy-Org `*_pruned_bf16` DiTs and
 ComfyUI's `models/` tree (and the Hugging Face hub cache / h3-ws, which
 the pack also searches).
 
+### MPS OOM with ~56 GB allocated and ~400 GB "other"
+
+The model is not 400 GB. H3 on other boxes runs in well under
+128 GB. AppleSilicon-FP8 caps the MPS allocator at 80–100% of
+Apple's recommended_max so a 16 GB Mac does not swap; on a 512 GB
+Mac that reserve is ~407 GB of empty pool, and a 544 MB VAE tile
+is refused. This pack overrides that watermark. Restart once.
+
+### Ref2VA comes out black (or dies at save with AAC NaN)
+
+The Metal attention patches already apply to both FL2VA and Ref2VA.
+What Ref2VA does that FL2VA does not is encode the reference *video*
+through the H3 video VAE. That encode is NaN on MPS; the pack used
+to cache it and the sampler then produced a black clip (and a
+soundtrack AAC refused). Multi-frame video encode stays on the GPU
+and runs the encoder in fp32. Restart once, then re-queue — the
+poisoned cache entries are dropped automatically. The first
+re-encode writes a finite cache entry; after that it hits again.
+
+### Ref2VA dies at save with `Input contains (near) NaN/+-Inf`
+
+If the clip is not black, this is the muxer: AAC refused a
+non-finite soundtrack. The pack replaces those samples so the mp4
+still writes. Restart once if you have not since that fix.
+
 ### CUDA OOM with `HostBuffer.read_file_slice` on a long render
 
 Recent ComfyUI streams weights with Dynamic VRAM by default. Start ComfyUI

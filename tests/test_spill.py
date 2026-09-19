@@ -128,6 +128,15 @@ check("a pass with no sound writes none", "audio_path" in silent, False)
 expect_error("...and says so rather than inventing silence",
              lambda: spill.sound(silent, 0.5), "decoded none")
 
+wave = torch.zeros(1, 2, 64)
+wave[0, 0, 0] = float("nan")
+wave[0, 1, -1] = float("inf")
+cleaned = spill.write(ramp(4), {"waveform": wave, "sample_rate": RATE}, FPS)
+back = np.memmap(cleaned["audio_path"], dtype=np.float32, mode="r",
+                 shape=(2, 64))
+check("NaN/Inf soundtrack is written finite", bool(np.isfinite(back).all()), True)
+check("...and clamped to the AAC range", bool(float(np.max(np.abs(back))) <= 1.0), True)
+
 # ---- a pass repaired in the picture -----------------------------------------
 #
 # What the face pass writes back. The frames are new, the sound is the sound it

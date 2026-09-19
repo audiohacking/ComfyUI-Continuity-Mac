@@ -364,17 +364,117 @@ def _patch_mps_attn_elem_cap():
     return True
 
 
+def physical_ram_bytes():
+    """Physical RAM, or 0 when the OS will not say."""
+    try:
+        return int(os.sysconf("SC_PHYS_PAGES")) * int(os.sysconf("SC_PAGE_SIZE"))
+    except (AttributeError, OSError, ValueError):
+        return 0
+
+
+def shield_mps_watermark():
+    """Stop AppleSilicon-FP8 holding most of a big Mac's unified pool.
+
+    That pack `setdefault`s low=0.8 / high=1.0 so the MPS cache is not
+    reclaimed until 80% of Apple's recommended_max and then hard-caps
+    there. On a 16–128 GB machine that prevents swap. On a 512 GB Mac
+    recommended_max is ~464 GB: the reserved pool sits at ~407 GB
+    ("other allocations") while live H3 tensors are ~56 GB (TE + VAE),
+    and a 544 MB tile is refused. H3 on other boxes runs in well under
+    128 GB — the 400 GB is the watermark, not the model.
+
+    Continuity prestartup runs after that pack, before torch imports,
+    so these assignments win. low=0.2 starts reclaiming cache early.
+    high=0.0 on ≥256 GB RAM disables the false cap (PyTorch's own
+    suggestion on this error). Smaller Macs keep high=1.0.
+    """
+    os.environ["PYTORCH_MPS_LOW_WATERMARK_RATIO"] = "0.2"
+    if physical_ram_bytes() >= 256 * 1024 ** 3:
+        os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
+    else:
+        os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "1.0"
+    return (os.environ["PYTORCH_MPS_LOW_WATERMARK_RATIO"],
+            os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"])
+
+
 def shield_h3_mps():
     """Env flags only — safe in prestartup, before ComfyUI imports torch.
 
     AppleSilicon-FP8 installs fused RoPE / fused RMSNorm from its `__init__`
-    after every prestartup. Those flags must already be off.
+    after every prestartup. The env flags must already be off. Its MPS
+    watermark is overwritten here for the same reason: torch reads those
+    ratios once, at MPS init.
     """
     os.environ[ASFP8_ROPE_ENV] = "off"
     os.environ[ASFP8_NORM_ENV] = "off"
+    shield_mps_watermark()
     disarm_asfp8_rope()
     disarm_asfp8_fused_norm()
     return os.environ.get(ASFP8_ROPE_ENV)
+
+
+def _patch_h3_video_vae_mps_encode():
+    """Keep H3 video VAE encode on MPS without cloning the encoder.
+
+    fp16 5D GroupNorm + CausalConv3d emit NaN on a clip (Ref2VA went
+    black). Converting the whole encoder to fp32 doubled it on top of
+    the 49 GB text encoder and OOMed. GroupNorm is 4D per-frame; each
+    conv/norm computes in fp32 on the GPU and the module stays fp16.
+    """
+    try:
+        from comfy.ldm.minimax.vae import (
+            CausalConv3d, MiniMaxH3VideoVAE, TemporalIsolatedGroupNorm)
+        import torch
+        import torch.nn.functional as F
+    except ImportError:
+        return False
+    if getattr(MiniMaxH3VideoVAE, "_continuity_mps_fp32_video_encode", False):
+        return True
+
+    orig_norm = TemporalIsolatedGroupNorm.forward
+
+    def group_norm_forward(self, x):
+        if x.dim() == 5:
+            b, c, t, h, w = x.shape
+            x = x.permute(0, 2, 1, 3, 4).contiguous().view(b * t, c, h, w)
+            if x.device.type == "mps" and x.dtype != torch.float32:
+                dtype = x.dtype
+                weight = None if self.weight is None else self.weight.float()
+                bias = None if self.bias is None else self.bias.float()
+                x = F.group_norm(x.float(), self.num_groups, weight, bias, self.eps)
+                x = x.to(dtype)
+            else:
+                x = torch.nn.GroupNorm.forward(self, x)
+            return x.view(b, t, c, h, w).permute(0, 2, 1, 3, 4).contiguous()
+        return orig_norm(self, x)
+
+    TemporalIsolatedGroupNorm.forward = group_norm_forward
+
+    orig_conv = CausalConv3d.forward
+
+    def conv_forward(self, x, pre_norm=None, spatial_pad=None, residual=None):
+        if (getattr(x, "device", None) is not None and x.device.type == "mps"
+                and x.dtype != torch.float32):
+            dtype = x.dtype
+            saved_w = self.weight.data
+            saved_b = None if self.bias is None else self.bias.data
+            self.weight.data = saved_w.float()
+            if saved_b is not None:
+                self.bias.data = saved_b.float()
+            try:
+                out = orig_conv(
+                    self, x.float(), pre_norm, spatial_pad,
+                    None if residual is None else residual.float())
+            finally:
+                self.weight.data = saved_w
+                if saved_b is not None:
+                    self.bias.data = saved_b
+            return out.to(dtype)
+        return orig_conv(self, x, pre_norm, spatial_pad, residual)
+
+    CausalConv3d.forward = conv_forward
+    MiniMaxH3VideoVAE._continuity_mps_fp32_video_encode = True
+    return True
 
 
 def protect_h3_mps():
@@ -389,11 +489,17 @@ def protect_h3_mps():
         _patch_sub_quad_empty_to_zeros(),
         _patch_bf16_attention_upcast(),
         _patch_mps_attn_elem_cap(),
+        _patch_h3_video_vae_mps_encode(),
     ]
     if any(patched):
         print("[Continuity Mac] forced MPS H3 attention: zeros not empty "
               "(ComfyUI#15804), bf16→fp32 upcast, 2^30 chunk cap "
               "(ComfyUI#14837). AppleSilicon-FP8 fused RoPE/RMSNorm off; "
-              "pytorch SDPA left off (dense QK). Sage/kitchen/SLA refused.",
+              "pytorch SDPA left off (dense QK). Sage/kitchen/SLA refused. "
+              "Ref2VA video encode on GPU (per-op fp32, no encoder clone). "
+              "MPS watermark low=%s high=%s (ASFP8 0.8/1.0 was holding "
+              "the 512 GB pool)."
+              % (os.environ.get("PYTORCH_MPS_LOW_WATERMARK_RATIO"),
+                 os.environ.get("PYTORCH_MPS_HIGH_WATERMARK_RATIO")),
               flush=True)
     return env

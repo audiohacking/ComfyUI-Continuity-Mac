@@ -215,6 +215,22 @@ class _Target:
     pending: list = field(default_factory=list)
 
 
+def _clean_sound(waveform):
+    """Finite samples in [-1, 1]. AAC refuses NaN/Inf with a bare EINVAL.
+
+    The H3 audio VAE on MPS can decode a finished Ref2VA latent into a
+    soundtrack that still has those; the picture is already written. Replacing
+    them with silence keeps the mp4 rather than throwing after a long sample.
+    """
+    if waveform.numel() == 0:
+        return waveform
+    if not bool(torch.isfinite(waveform).all()):
+        print("[Continuity] soundtrack had NaN/Inf; replaced so AAC can mux.",
+              flush=True)
+        waveform = waveform.nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
+    return waveform.clamp(-1.0, 1.0)
+
+
 def _encode_sound(av, target, block, at):
     """One frame of sound at sample `at`, encoded and muxed."""
     sound = av.AudioFrame.from_ndarray(
@@ -242,6 +258,7 @@ def _mux_sound(av, target, waveform, at):
     chunking this had before, which is nothing to do with correctness and
     everything to do with not converting a ten-minute soundtrack in one piece.
     """
+    waveform = _clean_sound(waveform)
     if target.pending:
         held_at, held = target.pending.pop()
         waveform = torch.cat([held, waveform], dim=-1)

@@ -942,6 +942,11 @@ def _encode_references(clip, vae, audio_vae, compiled, loaded, checkpoints=None)
                 # Qwen sees the clip at 2 fps with timestamps, not every frame.
                 sampled = list(range(0, frames.shape[0], FPS // 2))
                 encoded = vae.encode(frames)
+                if encoded.numel() and not bool(torch.isfinite(encoded).all()):
+                    raise ValueError(
+                        f"@{asset.handle}: the video VAE encode produced NaN/Inf "
+                        "on the GPU. The clip or the VAE weights are the problem."
+                    )
                 return ({"latent": encoded,
                          "presentation": _quantize(frames[sampled])},
                         {"latent_t": int(encoded.shape[2]),

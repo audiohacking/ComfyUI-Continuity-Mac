@@ -1,6 +1,6 @@
 [project]
 name = "continuity-metal"
-version = "3.0.1"
+version = "3.0.2"
 description = "Apple Silicon fork of Continuity: one node for MiniMax H3, LTX 2.5 and the still families on Metal / MPS. Not the CUDA pack, and not an MLX / h3.c runner."
 license = { file = "LICENSE" }
 requires-python = ">=3.10"

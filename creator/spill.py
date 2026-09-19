@@ -166,6 +166,10 @@ def write(images, audio, fps, name=None):
 
     if audio is not None and audio["waveform"].shape[-1]:
         waveform = audio["waveform"][0].float().cpu().contiguous().numpy()
+        # MPS audio VAE can emit NaN/Inf; AAC will not encode those.
+        if not np.isfinite(waveform).all():
+            waveform = np.nan_to_num(waveform, nan=0.0, posinf=0.0, neginf=0.0)
+        waveform = np.clip(waveform, -1.0, 1.0)
         try:
             with open(audio_path, "wb") as handle:
                 handle.write(np.ascontiguousarray(waveform, dtype=np.float32).tobytes())
