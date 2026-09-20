@@ -112,12 +112,25 @@ check("fused RoPE is not safe for H3's Q/K layout as-is",
 check("after RoPE, H3 attention is already [B, heads, S, dim]",
       metal.h3_attn_layout_after_rope(h3_qk), (1, 40, 800, 96))
 
-# 56 heads, 20k packed tokens, query chunk 4096: the 512 GB Mac path.
-q_chunk, kv_chunk = metal.mps_attn_chunks(56, 20000, 4096, 20000)
+# 56 heads, 20k packed tokens, asked for a 4096 query chunk: that would
+# cross MPS's 32-bit index wall if left uncapped.
+q_chunk, kv_chunk = metal.mps_attn_chunks(56, 20000, 4096, None)
 check("uncapped H3 attention on a big Mac crosses MPS's 32-bit index wall",
       56 * 4096 * 20000 > 2 ** 31, True)
 check("the pack's chunk cap stays under 2^30 elements",
       56 * q_chunk * kv_chunk <= metal.MPS_ATTN_ELEM_CAP, True)
+check("long sequences keep full KV (no multi-KV crawl)",
+      kv_chunk, 20000)
+# Explicit kv request still respected, and still under the cap.
+q_forced, kv_forced = metal.mps_attn_chunks(56, 20000, 4096, 20000)
+check("an explicit kv chunk is honored under the cap",
+      56 * q_forced * kv_forced <= metal.MPS_ATTN_ELEM_CAP, True)
+# Ref2VA-scale: must not floor q at 256 (that used to shrink kv and flip
+# into the checkpointed multi-KV path).
+q_long, kv_long = metal.mps_attn_chunks(56, 120000, 1024, None)
+check("Ref2VA-length keeps full KV", kv_long, 120000)
+check("...by shrinking q below 256 rather than chopping kv",
+      q_long < 256 and 56 * q_long * kv_long <= metal.MPS_ATTN_ELEM_CAP, True)
 
 was_rope = os.environ.get(metal.ASFP8_ROPE_ENV)
 was_norm = os.environ.get(metal.ASFP8_NORM_ENV)
@@ -147,6 +160,30 @@ finally:
             os.environ.pop(key, None)
         else:
             os.environ[key] = was
+
+# DeepStack guard: empty mask + matching sizes rebuilds; mismatch skips.
+try:
+    import torch
+except ImportError:
+    torch = None
+if torch is not None:
+    embeds = torch.zeros(1, 20, 4)
+    ds = [torch.zeros(5, 4), torch.zeros(5, 4)]
+    info = [{"type": "image", "index": 2, "size": 5,
+             "extra": {"deepstack": ds}}]
+    empty = torch.zeros(1, 20, dtype=torch.bool)
+    mask, out_ds = metal._reconcile_deepstack(embeds, info, empty, ds)
+    check("empty DeepStack mask rebuilds when sizes agree",
+          mask is not None and int(mask.sum()) == 5 and out_ds is ds, True)
+    bad_ds = [torch.zeros(7, 4)]
+    mask2, out2 = metal._reconcile_deepstack(embeds, info, empty, bad_ds)
+    check("size mismatch skips DeepStack instead of raising",
+          mask2 is None and out2 is None, True)
+    ok = torch.zeros(1, 20, dtype=torch.bool)
+    ok[0, 2:7] = True
+    mask3, out3 = metal._reconcile_deepstack(embeds, info, ok, ds)
+    check("a matching mask is left alone",
+          mask3 is ok and out3 is ds, True)
 
 hub = Path(os.path.expanduser("~/.cache/huggingface/hub"))
 snap = metal.hf_snapshot(metal.HF_COMFY_ORG_H3, hub=hub)

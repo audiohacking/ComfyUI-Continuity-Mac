@@ -437,9 +437,9 @@ def load_all(compiled):
     # It bounds the soundtrack of a `picture+sound` video too, which is a real
     # change: that audio used to be sent at its full trimmed length while its
     # picture was cut short, so the two halves of one reference described
-    # different spans of time. A standalone audio reference is not bounded — it
-    # is not paired with a picture and a long music cue is an ordinary thing to
-    # cite.
+    # different spans of time. Standalone audio references get the same cap —
+    # only the generation's seconds enter the model; the trim in-point still
+    # picks *which* seconds when the cue is longer.
     limit = align_frame_count(max(5, compiled.frames)) / TARGET_FPS
 
     # Keyframes are decoded here and now; everything the reference cache can
@@ -482,6 +482,17 @@ def load_all(compiled):
     # Both real audio files and videos referenced for their sound alone: the
     # decoder reads a soundtrack out of a video container the same way.
     for asset in compiled.ref_audios:
-        loaded[asset.handle] = Deferred(
-            lambda asset=asset: {"audio": load_audio(asset.filename, trim=asset.trim)})
+        def decode_audio(asset=asset):
+            # Same generation-length cap as reference video. A long music cue
+            # used to ride in whole while a picture+sound clip was cut to the
+            # card — mismatched spans, and a needless decode. Honour the trim
+            # in-point; only the length is clamped.
+            trim = asset.trim
+            if trim is None:
+                trim = (0.0, limit)
+            else:
+                start, end = float(trim[0]), float(trim[1])
+                trim = (start, min(end, start + limit))
+            return {"audio": load_audio(asset.filename, trim=trim)}
+        loaded[asset.handle] = Deferred(decode_audio)
     return loaded

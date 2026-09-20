@@ -6022,6 +6022,40 @@ export function timedAssets(state) {
   return found;
 }
 
+/**
+ * Cut a timed reference to the generation's length, from its current in-point.
+ *
+ * Decode already caps at the card (`media.load_all`), but a null trim still
+ * reads as "whole clip" in the UI and has no window to slide. When the source
+ * is longer than the card, writing an explicit trim makes the shift handles
+ * real — the same habit h3-ws keeps: only the generation's seconds enter the
+ * model, and the user can pick *which* seconds.
+ *
+ * `sourceSeconds` is the whole-file length from the probe. Without it, an
+ * existing trim longer than the card is still shortened; an unset trim is
+ * left alone (caller probes first).
+ *
+ * -> true when the asset changed.
+ */
+export function fitTimedAssetToCard(asset, cardSeconds, sourceSeconds = null) {
+  if (!asset || !timed(asset)) return false;
+  const card = Number(cardSeconds);
+  if (!(card > 0)) return false;
+  const slack = 1 / 24;
+  const trim = asset.trim;
+  if (trim && Number.isFinite(trim.start) && Number.isFinite(trim.end)
+      && trim.end > trim.start) {
+    const length = trim.end - trim.start;
+    if (length <= card + slack) return false;
+    asset.trim = { start: round2(trim.start), end: round2(trim.start + card) };
+    return true;
+  }
+  const whole = Number(sourceSeconds);
+  if (!(whole > card + slack)) return false;
+  asset.trim = { start: 0, end: round2(card) };
+  return true;
+}
+
 export function timedRefs(state, lengthOf) {
   const found = [];
   for (const asset of timedAssets(state)) {

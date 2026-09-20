@@ -86,6 +86,26 @@ matching Comfy-Org `*_pruned_bf16` DiTs and
 ComfyUI's `models/` tree (and the Hugging Face hub cache / h3-ws, which
 the pack also searches).
 
+### Ref2VA on Continuity Metal is much slower than h3-ws / h3.c
+
+Same Mac, same Apple GPU — different engine. [h3.c](https://github.com/antirez/h3.c)
+(via h3-ws) is a native Metal runtime: MPSGraph SDPA, fused DiT shaders,
+tight command-buffer scheduling. This pack drives MiniMax-H3 through
+ComfyUI + PyTorch MPS with patched sub-quadratic attention (dense SDPA
+OOMs on long packed sequences; mtlflashattn is not yet a win at H3's
+head dim). That stack is correct but far less efficient per token.
+
+A video reference at generation length roughly doubles the packed
+token count, and attention dominates — so the gap widens on Ref2VA.
+Shorten `duration_s`, lower `short_edge`, or use video `ref_size:
+match` when the source is larger than the generation. Reference
+clips longer than the card are decoded only for the generation's
+seconds (and auto-trimmed on attach so you can shift which seconds).
+Restart after the attention-chunk fix so long sequences keep the
+full-KV path. Matching h3.c's wall time needs a Metal-native
+attention path (or calling h3.c), not CUDA — there is no CUDA on
+this host.
+
 ### MPS OOM with ~56 GB allocated and ~400 GB "other"
 
 The model is not 400 GB. H3 on other boxes runs in well under
@@ -98,12 +118,23 @@ is refused. This pack overrides that watermark. Restart once.
 
 The Metal attention patches already apply to both FL2VA and Ref2VA.
 What Ref2VA does that FL2VA does not is encode the reference *video*
-through the H3 video VAE. That encode is NaN on MPS; the pack used
-to cache it and the sampler then produced a black clip (and a
-soundtrack AAC refused). Multi-frame video encode stays on the GPU
-and runs the encoder in fp32. Restart once, then re-queue — the
-poisoned cache entries are dropped automatically. The first
-re-encode writes a finite cache entry; after that it hits again.
+through the H3 video VAE. That encode is NaN on MPS when activations
+round-trip through fp16 between layers (and again at `quant_conv`);
+the pack used to cache it and the sampler then produced a black clip
+(and a soundtrack AAC refused). Multi-frame video encode stays on
+the GPU and keeps activations in fp32 through the encoder and
+`quant_conv`. Restart once, then re-queue — the poisoned cache
+entries are dropped automatically. The first re-encode writes a
+finite cache entry; after that it hits again.
+
+### Ref2VA dies after video encode with DeepStack / tensor size 0 vs N
+
+The video VAE finished; Qwen3-VL CLIP then crashed on
+`x[visual_pos_masks] += deepstack` because the mask had no Trues while
+deepstack still held the visual tokens. Continuity Metal rebuilds or
+skips that inject so the encode continues (merged vision tokens remain
+in the prompt). Restart once after 3.0.4. A warning in the log means
+the guard fired; it is not a failed render by itself.
 
 ### Ref2VA dies at save with `Input contains (near) NaN/+-Inf`
 

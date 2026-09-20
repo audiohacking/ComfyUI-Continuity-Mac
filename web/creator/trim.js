@@ -188,8 +188,9 @@ class Trim {
     });
 
     // The other half of the pill's "match @vid-1": there, the card grows to the
-    // reference; here, the reference is cut to the card. Which way round is
-    // right is the user's call, so both exist and neither happens on its own.
+    // reference; here, the reference is cut to the card. Attaching a longer
+    // clip already writes that cut (see `fitTimedAssetToCard`); this button
+    // re-applies it from the current in-point after you have slid the window.
     this.fitButton = this.card ? el("button", {
       class: "mmc-ghost", text: t("Take {seconds} s", { seconds: this.card.toFixed(2) }),
       title: t("Cut the segment to the length of the shot referencing it, from the in point."),

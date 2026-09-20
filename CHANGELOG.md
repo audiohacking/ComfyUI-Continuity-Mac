@@ -6,6 +6,44 @@ exactly as it was written, wall of text and all.
 
 ## Unreleased
 
+## 3.0.4
+
+**Ref2VA CLIP encode no longer dies on an empty Qwen3-VL DeepStack
+mask.** After a long video VAE encode, Comfy could hand Llama
+deepstack features (thousands of visual tokens) with zero
+`visual_pos_masks` Trues — `x[mask] += deepstack` then raised and
+killed the run. Continuity Metal rebuilds the mask when sizes agree,
+otherwise skips DeepStack inject (merged vision tokens stay in the
+prompt) and never raises from that path. Restart once.
+
+**Reference video/audio longer than the card is fitted to the
+generation length on attach.** Decode already capped video at the
+card (`media.load_all`); a null trim still showed as "whole" with
+no window to slide. Attaching now writes an explicit
+`{start:0, end:card}` trim when the source is longer, so the
+segment editor can shift which seconds enter the model. Standalone
+audio refs get the same generation-length clamp. Shortening the
+duration pill re-fits overlong trims.
+
+**Long Ref2VA runs on Continuity Metal no longer take the slow
+multi-KV attention path.** The MPS 2^30 element cap used to floor
+query chunks at 256, which then chopped KV under the sequence
+length and flipped ComfyUI into its checkpointed multi-KV branch —
+that made video-reference TaoMate jobs crawl here versus the same
+Mac's native [h3.c](https://github.com/antirez/h3.c) / h3-ws path
+(MPSGraph + fused Metal shaders, not CUDA). Query chunks now shrink
+below 256 when needed so KV stays full. Restart once. Continuity
+still will not match h3.c wall time on long Ref2VA; shorter
+duration / lower `short_edge` remain the big levers for token count.
+
+**Ref2VA video encode no longer NaNs on longer/portrait Metal
+clips.** The 3.0.2 per-op fp32 path still cast each GroupNorm /
+CausalConv3d result back to fp16, and left `quant_conv` in fp16 —
+that re-introduced Inf on clips like the Abatantuono reference.
+Activations now stay float32 through the encoder and `quant_conv`
+without cloning the weights. Restart once, then re-queue. Re-run
+the publish Action to ship this version.
+
 **3.0.3 refuses features whose weight files are not on disk,
 before the sampler runs.** A remembered SAM3 pick with the face
 pass on used to sample for minutes and only then raise

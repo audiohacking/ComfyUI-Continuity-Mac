@@ -945,6 +945,33 @@ export class CreatorEditor {
     }
     this.commit();
     for (const entry of undecided) await this.applySoundDefault(entry);
+    // Long clips get an explicit card-length trim so the window can be shifted
+    // — decode already capped them, but "whole" left nothing to drag.
+    await this.fitTimedRefsToCard();
+  }
+
+  /**
+   * Cut every timed reference on this card down to the generation's length.
+   *
+   * Probes whole-file lengths when needed. Existing trims keep their in-point
+   * and only lose excess length; unset trims on sources longer than the card
+   * become `{start: 0, end: card}` so the segment editor has a window to slide.
+   */
+  async fitTimedRefsToCard() {
+    const card = this.cardSeconds();
+    if (!(card > 0)) return;
+    let changed = false;
+    for (const asset of S.timedAssets(this.state)) {
+      let whole = this.lengths.get(asset.filename);
+      if (whole == null && !asset.trim) {
+        this.lengths.set(asset.filename, null);
+        const probed = await probe(asset.filename);
+        whole = probed?.duration ?? null;
+        if (whole) this.lengths.set(asset.filename, whole);
+      }
+      if (S.fitTimedAssetToCard(asset, card, whole)) changed = true;
+    }
+    if (changed) this.commit();
   }
 
   /**
@@ -1506,7 +1533,8 @@ export class CreatorEditor {
   /** How long every reference on this card runs, off the same header the sizes
    *  come from. Stills are not asked, so a card of pictures costs no round
    *  trips; a trimmed clip is not asked either, because the range is the
-   *  length. */
+   *  length. When a whole-file probe comes back longer than the card, write
+   *  an explicit trim so the window can be shifted (decode already capped). */
   probeLengths() {
     // `S.timedAssets` rather than the references alone: the guide has a length
     // too, and a length nobody asked the server for is a length the pill cannot
@@ -1518,7 +1546,8 @@ export class CreatorEditor {
       probe(asset.filename).then(({ duration }) => {
         if (!duration) return;
         this.lengths.set(asset.filename, duration);
-        this.render();
+        if (S.fitTimedAssetToCard(asset, this.cardSeconds(), duration)) this.commit();
+        else this.render();
       });
     }
   }
@@ -2804,6 +2833,7 @@ export class CreatorEditor {
         onclick: () => {
           state.duration_s = stepTo(-1);
           this.commit();
+          void this.fitTimedRefsToCard();
         },
       }),
       icon("clock", 16),
@@ -2822,6 +2852,7 @@ export class CreatorEditor {
         onclick: () => {
           state.duration_s = stepTo(1);
           this.commit();
+          void this.fitTimedRefsToCard();
         },
       }),
       // The switch, only on a family that has the weights to answer. It is the

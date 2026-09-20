@@ -327,14 +327,33 @@ def _patch_bf16_attention_upcast():
 
 def mps_attn_chunks(batch_x_heads, k_tokens, query_chunk_size=1024,
                     kv_chunk_size=None):
-    """Query/KV chunk sizes that keep `heads * q * k` under MPS_ATTN_ELEM_CAP."""
+    """Query/KV chunk sizes that keep `heads * q * k` under MPS_ATTN_ELEM_CAP.
+
+    Prefer a full-KV pass (ComfyUI's `_get_attention_scores_no_kv_chunking`)
+    by shrinking the query chunk. Flooring q at 256 used to push kv under
+    `k_tokens`, which flips into the checkpointed multi-KV path — that is
+    what made long Ref2VA sequences crawl on Continuity versus native
+    h3.c (MPSGraph / fused Metal) on the same Mac.
+    """
     bxh = max(1, int(batch_x_heads))
     ktok = max(1, int(k_tokens))
-    max_q = max(256, MPS_ATTN_ELEM_CAP // (bxh * ktok))
-    q = min(int(query_chunk_size or 1024), max_q)
-    kv = ktok if kv_chunk_size is None else min(int(kv_chunk_size), ktok)
-    max_kv = max(256, MPS_ATTN_ELEM_CAP // (bxh * q))
-    return q, min(kv, max_kv)
+    want_q = max(1, int(query_chunk_size or 1024))
+
+    if kv_chunk_size is not None:
+        kv = min(max(1, int(kv_chunk_size)), ktok)
+        q = min(want_q, max(1, MPS_ATTN_ELEM_CAP // (bxh * kv)))
+        return max(1, q), kv
+
+    # Full KV fits with a (possibly small) query chunk — keep kv == ktok so
+    # sub-quadratic takes the no-kv-chunking branch.
+    max_q_full_kv = max(1, MPS_ATTN_ELEM_CAP // (bxh * ktok))
+    if max_q_full_kv >= 1:
+        return min(want_q, max_q_full_kv), ktok
+
+    # Even q=1 overflows — last resort, chunk KV too.
+    q = min(want_q, 1024)
+    kv = max(1, MPS_ATTN_ELEM_CAP // (bxh * q))
+    return q, min(kv, ktok)
 
 
 def _patch_mps_attn_elem_cap():
@@ -420,6 +439,11 @@ def _patch_h3_video_vae_mps_encode():
     black). Converting the whole encoder to fp32 doubled it on top of
     the 49 GB text encoder and OOMed. GroupNorm is 4D per-frame; each
     conv/norm computes in fp32 on the GPU and the module stays fp16.
+
+    Activations stay float32 through the encoder chain — casting each
+    layer back to fp16 re-introduced Inf on longer/portrait clips
+    (Abatantuono @vid-1). quant_conv is a plain 1x1 Conv3d, so
+    `_encode_moments` also runs it in fp32 for the same reason.
     """
     try:
         from comfy.ldm.minimax.vae import (
@@ -437,12 +461,10 @@ def _patch_h3_video_vae_mps_encode():
         if x.dim() == 5:
             b, c, t, h, w = x.shape
             x = x.permute(0, 2, 1, 3, 4).contiguous().view(b * t, c, h, w)
-            if x.device.type == "mps" and x.dtype != torch.float32:
-                dtype = x.dtype
+            if x.device.type == "mps":
                 weight = None if self.weight is None else self.weight.float()
                 bias = None if self.bias is None else self.bias.float()
                 x = F.group_norm(x.float(), self.num_groups, weight, bias, self.eps)
-                x = x.to(dtype)
             else:
                 x = torch.nn.GroupNorm.forward(self, x)
             return x.view(b, t, c, h, w).permute(0, 2, 1, 3, 4).contiguous()
@@ -453,27 +475,222 @@ def _patch_h3_video_vae_mps_encode():
     orig_conv = CausalConv3d.forward
 
     def conv_forward(self, x, pre_norm=None, spatial_pad=None, residual=None):
-        if (getattr(x, "device", None) is not None and x.device.type == "mps"
-                and x.dtype != torch.float32):
-            dtype = x.dtype
+        if getattr(x, "device", None) is not None and x.device.type == "mps":
             saved_w = self.weight.data
             saved_b = None if self.bias is None else self.bias.data
             self.weight.data = saved_w.float()
             if saved_b is not None:
                 self.bias.data = saved_b.float()
             try:
-                out = orig_conv(
+                return orig_conv(
                     self, x.float(), pre_norm, spatial_pad,
                     None if residual is None else residual.float())
             finally:
                 self.weight.data = saved_w
                 if saved_b is not None:
                     self.bias.data = saved_b
-            return out.to(dtype)
         return orig_conv(self, x, pre_norm, spatial_pad, residual)
 
     CausalConv3d.forward = conv_forward
+
+    orig_moments = MiniMaxH3VideoVAE._encode_moments
+
+    def encode_moments(self, x):
+        if getattr(x, "device", None) is not None and x.device.type == "mps":
+            qc = self.quant_conv
+            saved_w = qc.weight.data
+            saved_b = None if qc.bias is None else qc.bias.data
+            qc.weight.data = saved_w.float()
+            if saved_b is not None:
+                qc.bias.data = saved_b.float()
+            try:
+                return orig_moments(self, x.float())
+            finally:
+                qc.weight.data = saved_w
+                if saved_b is not None:
+                    qc.bias.data = saved_b
+        return orig_moments(self, x)
+
+    MiniMaxH3VideoVAE._encode_moments = encode_moments
     MiniMaxH3VideoVAE._continuity_mps_fp32_video_encode = True
+    return True
+
+
+def _deepstack_mask_report(embeds, embeds_info, visual_pos_masks, deepstack):
+    """-> (seq, n_mask, n_ds, rows) for the Qwen3-VL DeepStack inject guard.
+
+    `rows` is a list of (index, size, deepstack0, end) per image embed.
+    Never raises: a broken embeds_info entry becomes a None-filled row.
+    """
+    try:
+        seq = int(embeds.shape[1]) if embeds is not None else -1
+    except Exception:  # noqa: BLE001
+        seq = -1
+    try:
+        n_mask = (0 if visual_pos_masks is None
+                  else int(visual_pos_masks.sum().item()))
+    except Exception:  # noqa: BLE001
+        n_mask = -1
+    try:
+        n_ds = 0 if not deepstack else int(deepstack[0].shape[0])
+    except Exception:  # noqa: BLE001
+        n_ds = -1
+    rows = []
+    for e in embeds_info or []:
+        try:
+            if e.get("type") != "image":
+                continue
+            start = e.get("index")
+            size = e.get("size")
+            extra = e.get("extra") if isinstance(e.get("extra"), dict) else None
+            ds = extra.get("deepstack") if extra else None
+            ds0 = int(ds[0].shape[0]) if ds else None
+            end = (start + size if isinstance(start, int)
+                   and isinstance(size, int) else None)
+            rows.append((start, size, ds0, end))
+        except Exception:  # noqa: BLE001
+            rows.append((None, None, None, None))
+    return seq, n_mask, n_ds, rows
+
+
+def _rebuild_visual_pos_masks(embeds, embeds_info, deepstack):
+    """Rebuild the DeepStack mask when Comfy left it empty but sizes agree.
+
+    Returns (mask, deepstack) or (None, None) to skip inject safely. Merged
+    vision tokens stay in `embeds` either way; DeepStack is the residual add.
+    Never raises — any failure means skip.
+    """
+    try:
+        import torch
+
+        seq, _n_mask, n_ds, rows = _deepstack_mask_report(
+            embeds, embeds_info, None, deepstack)
+        if n_ds <= 0 or seq <= 0:
+            return None, None
+        sized = sum(r[1] or 0 for r in rows)
+        if sized != n_ds:
+            return None, None
+        mask = torch.zeros((1, seq), dtype=torch.bool, device=embeds.device)
+        for start, size, _ds0, end in rows:
+            if not isinstance(start, int) or not isinstance(size, int) or size <= 0:
+                continue
+            if start < 0 or start >= seq or end is None:
+                continue
+            mask[0, start:min(end, seq)] = True
+        if int(mask.sum().item()) != n_ds:
+            return None, None
+        return mask, deepstack
+    except Exception:  # noqa: BLE001
+        return None, None
+
+
+def _reconcile_deepstack(embeds, embeds_info, visual_pos_masks, deepstack):
+    """Make DeepStack safe to inject, or drop it.
+
+    -> (mask, deepstack). `(None, None)` means skip the residual add; the
+    merged vision tokens already sit in `embeds`. Never raises.
+    """
+    import logging
+
+    try:
+        if deepstack is None:
+            return visual_pos_masks, None
+        seq, n_mask, n_ds, rows = _deepstack_mask_report(
+            embeds, embeds_info, visual_pos_masks, deepstack)
+        if n_ds <= 0:
+            return visual_pos_masks, None
+        if n_mask == n_ds:
+            return visual_pos_masks, deepstack
+        logging.warning(
+            "[Continuity Mac] Qwen3-VL DeepStack mask/size mismatch: "
+            "mask=%d deepstack=%d seq=%d embeds_info(index,size,ds)=%s",
+            n_mask, n_ds, seq, rows)
+        rebuilt, deepstack2 = _rebuild_visual_pos_masks(
+            embeds, embeds_info, deepstack)
+        if rebuilt is not None:
+            logging.warning(
+                "[Continuity Mac] DeepStack mask rebuilt (%d positions)",
+                n_ds)
+            return rebuilt, deepstack2
+        logging.warning(
+            "[Continuity Mac] skipping DeepStack inject (merged vision "
+            "tokens remain in the prompt)")
+        return None, None
+    except Exception as exc:  # noqa: BLE001
+        logging.warning(
+            "[Continuity Mac] DeepStack guard failed (%s); skipping inject",
+            exc)
+        return None, None
+
+
+def _patch_qwen3vl_deepstack_mask():
+    """Keep Ref2VA CLIP encode from dying on an empty DeepStack mask.
+
+    Seen on MPS after long video VAE encodes: `build_image_inputs` returns
+    deepstack features (e.g. 3576 visual tokens for image + 2 fps video
+    blocks) but `visual_pos_masks` has zero Trues, so Llama2_'s
+    `x[mask] += deepstack` raises. Merged vision embeddings are already
+    spliced into the sequence — dropping DeepStack is safe enough to
+    finish the encode; a matching mask is rebuilt when sizes allow.
+
+    Also wraps Llama2_ so a mismatch that slips past still cannot crash
+    the encode mid-layer.
+    """
+    try:
+        from comfy.text_encoders import qwen3vl
+        from comfy.text_encoders import llama as llama_te
+    except ImportError:
+        return False
+    if getattr(qwen3vl.Qwen3VL, "_continuity_deepstack_guard", False):
+        return True
+
+    import logging
+
+    orig_build = qwen3vl.Qwen3VL.build_image_inputs
+
+    def build_image_inputs(self, embeds, embeds_info):
+        try:
+            position_ids, visual_pos_masks, deepstack = orig_build(
+                self, embeds, embeds_info)
+        except Exception as exc:  # noqa: BLE001
+            logging.warning(
+                "[Continuity Mac] Qwen3-VL build_image_inputs failed (%s); "
+                "continuing without DeepStack / MRoPE extras",
+                exc)
+            return None, None, None
+        visual_pos_masks, deepstack = _reconcile_deepstack(
+            embeds, embeds_info, visual_pos_masks, deepstack)
+        return position_ids, visual_pos_masks, deepstack
+
+    qwen3vl.Qwen3VL.build_image_inputs = build_image_inputs
+    qwen3vl.Qwen3VL._continuity_deepstack_guard = True
+
+    # Belt: if anything still hands Llama a mismatched pair, skip the add
+    # rather than raising mid-layer and killing the whole Ref2VA encode.
+    if not getattr(llama_te.Llama2_, "_continuity_deepstack_inject_guard", False):
+        _orig_llama_forward = llama_te.Llama2_.forward
+
+        def llama_forward(self, *args, **kwargs):
+            deepstack = kwargs.get("deepstack_embeds")
+            mask = kwargs.get("visual_pos_masks")
+            if deepstack is not None:
+                try:
+                    n_ds = int(deepstack[0].shape[0])
+                    n_mask = (0 if mask is None else int(mask.sum().item()))
+                except Exception:  # noqa: BLE001
+                    n_ds, n_mask = -1, -1
+                if n_ds > 0 and n_mask != n_ds:
+                    logging.warning(
+                        "[Continuity Mac] Llama DeepStack inject skipped "
+                        "(mask=%s deepstack=%s)", n_mask, n_ds)
+                    kwargs = dict(kwargs)
+                    kwargs["deepstack_embeds"] = None
+                    kwargs["visual_pos_masks"] = None
+            return _orig_llama_forward(self, *args, **kwargs)
+
+        llama_te.Llama2_.forward = llama_forward
+        llama_te.Llama2_._continuity_deepstack_inject_guard = True
+
     return True
 
 
@@ -490,13 +707,15 @@ def protect_h3_mps():
         _patch_bf16_attention_upcast(),
         _patch_mps_attn_elem_cap(),
         _patch_h3_video_vae_mps_encode(),
+        _patch_qwen3vl_deepstack_mask(),
     ]
     if any(patched):
         print("[Continuity Mac] forced MPS H3 attention: zeros not empty "
               "(ComfyUI#15804), bf16→fp32 upcast, 2^30 chunk cap "
               "(ComfyUI#14837). AppleSilicon-FP8 fused RoPE/RMSNorm off; "
               "pytorch SDPA left off (dense QK). Sage/kitchen/SLA refused. "
-              "Ref2VA video encode on GPU (per-op fp32, no encoder clone). "
+              "Ref2VA video encode on GPU (fp32 activations end-to-end, "
+              "no encoder clone). DeepStack mask guard on. "
               "MPS watermark low=%s high=%s (ASFP8 0.8/1.0 was holding "
               "the 512 GB pool)."
               % (os.environ.get("PYTORCH_MPS_LOW_WATERMARK_RATIO"),
