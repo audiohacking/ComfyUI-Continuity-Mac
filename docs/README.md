@@ -8,3 +8,5 @@
 - [Tools](tools.md) - pre-stage, ControlNet bench, upscale bench, contact sheet, presets, LoRAs
 - [FAQ and troubleshooting](faq.md) - settings, common errors, and what they mean
 - [Changelog](../CHANGELOG.md) - what changed, release by release
+- [Metal VAE opportunity log](metal_vae_opportunities.md) - Continuity Metal research: measured and open H3 VAE / Ref2VA speed work (nothing discarded)
+- [Metal sampler opportunity log](metal_sampler_opportunities.md) - H3 attention / token-budget speed work; forced wins (mtlflashattn, video `match`)

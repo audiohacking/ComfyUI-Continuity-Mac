@@ -171,8 +171,9 @@ def refuse_cuda_stack(weights):
 # optimized_attention(skip_reshape=True). Dense pytorch SDPA would see the
 # right layout and still be wrong: it materializes QK and aborted at ~383 GB
 # on a long packed sequence. Sub-quadratic with the patches below is the
-# working path. mtlflashattn is the next speed bet — it never forms QK and
-# already expects BHSD — but only once a fallback cannot reach stock SDPA.
+# live Metal path. mtlflashattn was science-timed faster but the live
+# wrapper produced noise (2026-09-24) — kept off protect_h3_mps until a
+# bit-exact call-site integration is proven on a real Ref2VA sample.
 ASFP8_ROPE_ENV = "ASFP8_ROPE_FAST"
 ASFP8_ROPE_TAG = "[AppleSilicon-FP8/rope-fast]"
 ASFP8_NORM_ENV = "ASFP8_FUSED_NORM"
@@ -183,9 +184,9 @@ ASFP8_NORM_TAG = "[AppleSilicon-FP8/fused-norm]"
 # sub-quadratic skip chunking because "there is plenty of RAM".
 MPS_ATTN_ELEM_CAP = 2 ** 30
 
-# Continuity accelerators that are CUDA/Triton. On MPS they are noise or a
-# hang; `default` attention, chunked FFN, and the step caches still run.
-NVIDIA_ATTENTION = ("sage", "kitchen", "sla")
+# Continuity accelerators that are CUDA/Triton or retired experiments. On MPS
+# they are noise or a hang; `default` attention (patched sub-quad) still runs.
+NVIDIA_ATTENTION = ("sage", "kitchen", "sla", "laya")
 
 
 def asfp8_rope_length(q_shape):
@@ -383,6 +384,155 @@ def _patch_mps_attn_elem_cap():
     return True
 
 
+def _reshape_qkv_heads(query, key, value, heads, skip_reshape, enable_gqa):
+    """-> (q, k, v) in [B, heads, S, dim] for metal flash, plus (b, dim_head)."""
+    import comfy.ops
+    if skip_reshape:
+        b, _, _, dim_head = query.shape
+        if enable_gqa:
+            key, value = comfy.ops.repeat_kv_for_gqa(
+                key, value, query.shape[-3], -3)
+        return query, key, value, b, dim_head
+    b, _, dim_head = query.shape
+    dim_head //= heads
+    # Same reshape attention_pytorch / attention_sub_quad use for the
+    # non-skip_reshape path: [B, S, H*D] -> [B, H, S, D].
+    import comfy.ldm.modules.attention as att
+    q, k, v = att._reshape_qkv_to_heads(
+        query, key, value, b, heads, dim_head, enable_gqa)
+    # _reshape_qkv_to_heads returns [B, S, H, D]
+    q = q.permute(0, 2, 1, 3)
+    k = k.permute(0, 2, 1, 3)
+    v = v.permute(0, 2, 1, 3)
+    return q, k, v, b, dim_head
+
+
+def _metal_flash_bhsd(q, k, v, softmax_scale=None):
+    """mtlflashattn on BHSD via transpose to BSHD."""
+    from metal_flash_attn import flash_attn_func
+    qq = q.transpose(1, 2).contiguous()
+    kk = k.transpose(1, 2).contiguous()
+    vv = v.transpose(1, 2).contiguous()
+    out = flash_attn_func(qq, kk, vv, causal=False, softmax_scale=softmax_scale)
+    return out.transpose(1, 2).contiguous()
+
+
+# Opt-in mtlflashattn helpers for science (`metal_attn`, test_metal_attn_science).
+# Not called from protect_h3_mps — live forcing produced noise (2026-09-24).
+_METAL_FLASH_REBIND = (
+    "comfy.ldm.minimax.model",
+    "comfy.ldm.minimax.vae",
+)
+_METAL_FLASH_FN = None
+_METAL_FLASH_HITS = {"n": 0}
+
+
+def _rebind_optimized_attention(wrapped, stale=None):
+    """Point every stale importer at `wrapped`. Returns how many modules updated."""
+    import sys
+    stale = set(stale or ())
+    stale.discard(None)
+    rebound = 0
+    seen = set()
+
+    def _set(mod):
+        nonlocal rebound
+        if mod is None or id(mod) in seen:
+            return
+        seen.add(id(mod))
+        try:
+            if getattr(mod, "optimized_attention", None) is not wrapped:
+                setattr(mod, "optimized_attention", wrapped)
+                rebound += 1
+        except Exception:  # noqa: BLE001
+            pass
+
+    for name in _METAL_FLASH_REBIND:
+        _set(sys.modules.get(name))
+    for mod in list(sys.modules.values()):
+        if mod is None or id(mod) in seen:
+            continue
+        try:
+            current = getattr(mod, "optimized_attention", None)
+        except Exception:  # noqa: BLE001
+            continue
+        if current in stale:
+            _set(mod)
+    return rebound
+
+
+def _patch_metal_flash_attention():
+    """Science / opt-in: bind MPS `optimized_attention` through mtlflashattn.
+
+    Not used by `protect_h3_mps`. Live Ref2VA with this wrapper produced noise
+    (2026-09-24). Kept for `tests/test_metal_attn_science.py` and future A/B
+    via a proper Comfy model-patch path (SolAttn-MPS / mtlattn), not a global
+    force. Masked / GQA / non-MPS fall through to the previous backend.
+    """
+    global _METAL_FLASH_FN
+    try:
+        from metal_flash_attn import flash_attn_func  # noqa: F401
+        import comfy.ldm.modules.attention as att
+        import logging
+    except ImportError:
+        return False
+    if getattr(att, "_continuity_metal_flash", False):
+        rebound = _rebind_optimized_attention(att.optimized_attention)
+        if rebound:
+            logging.info(
+                "[Continuity Mac] mtlflashattn re-pushed to %d late importer(s)",
+                rebound)
+        _METAL_FLASH_FN = att.optimized_attention
+        return True
+
+    orig = att.optimized_attention
+    inner = getattr(orig, "__wrapped__", orig)
+    fallbacks = {"n": 0}
+
+    def attention_metal_flash(
+            query, key, value, heads, mask=None, attn_precision=None,
+            skip_reshape=False, skip_output_reshape=False, **kwargs):
+        on_mps = (getattr(query, "device", None) is not None
+                  and query.device.type == "mps")
+        if (not on_mps or mask is not None
+                or kwargs.get("enable_gqa", False)):
+            return inner(
+                query, key, value, heads, mask=mask,
+                attn_precision=attn_precision, skip_reshape=skip_reshape,
+                skip_output_reshape=skip_output_reshape, **kwargs)
+        try:
+            q, k, v, b, dim_head = _reshape_qkv_heads(
+                query, key, value, heads, skip_reshape,
+                kwargs.get("enable_gqa", False))
+            out = _metal_flash_bhsd(q, k, v, softmax_scale=kwargs.get("scale"))
+            if skip_output_reshape:
+                return out
+            return out.permute(0, 2, 1, 3).reshape(b, -1, heads * dim_head)
+        except Exception as exc:  # noqa: BLE001
+            if fallbacks["n"] < 3:
+                logging.warning(
+                    "[Continuity Mac] metal flash attn fell back to sub-quad: %s",
+                    exc)
+                fallbacks["n"] += 1
+            return inner(
+                query, key, value, heads, mask=mask,
+                attn_precision=attn_precision, skip_reshape=skip_reshape,
+                skip_output_reshape=skip_output_reshape, **kwargs)
+
+    wrapped = att.wrap_attn(attention_metal_flash)
+    stale = {orig, inner, getattr(att, "attention_sub_quad", None)}
+    att.optimized_attention = wrapped
+    att.optimized_attention_masked = wrapped
+    rebound = _rebind_optimized_attention(wrapped, stale=stale)
+    att._continuity_metal_flash = True
+    _METAL_FLASH_FN = wrapped
+    logging.info(
+        "[Continuity Mac] mtlflashattn bound on optimized_attention "
+        "(%d module rebinds; science/opt-in only)",
+        rebound)
+    return True
+
+
 def physical_ram_bytes():
     """Physical RAM, or 0 when the OS will not say."""
     try:
@@ -432,18 +582,43 @@ def shield_h3_mps():
     return os.environ.get(ASFP8_ROPE_ENV)
 
 
+def _promote_mps_fp32_params(module):
+    """One-shot: keep encode math in fp32 without per-forward weight clones.
+
+    Measured in `tests/test_metal_vae_science.py` phase C: swapping
+    `.float()` on every CausalConv3d call cost 20–40% vs holding fp32
+    weights. Promoting in place (not `encoder.clone().float()`) doubles
+    only the parameter storage for that module — the OOM we hit before
+    was cloning the whole encoder on top of the text encoder.
+    """
+    import torch
+    if getattr(module, "_continuity_mps_fp32_params", False):
+        return
+    if getattr(module, "weight", None) is not None \
+            and module.weight is not None \
+            and module.weight.dtype != torch.float32:
+        module.weight.data = module.weight.data.float().contiguous()
+    if getattr(module, "bias", None) is not None \
+            and module.bias is not None \
+            and module.bias.dtype != torch.float32:
+        module.bias.data = module.bias.data.float().contiguous()
+    module._continuity_mps_fp32_params = True
+
+
 def _patch_h3_video_vae_mps_encode():
     """Keep H3 video VAE encode on MPS without cloning the encoder.
 
     fp16 5D GroupNorm + CausalConv3d emit NaN on a clip (Ref2VA went
     black). Converting the whole encoder to fp32 doubled it on top of
     the 49 GB text encoder and OOMed. GroupNorm is 4D per-frame; each
-    conv/norm computes in fp32 on the GPU and the module stays fp16.
+    conv/norm computes in fp32 on the GPU.
 
-    Activations stay float32 through the encoder chain — casting each
-    layer back to fp16 re-introduced Inf on longer/portrait clips
-    (Abatantuono @vid-1). quant_conv is a plain 1x1 Conv3d, so
-    `_encode_moments` also runs it in fp32 for the same reason.
+    Parameter tensors are promoted to fp32 once on first MPS use (science
+    suite C: kills the per-call `.float()` tax). Activations stay float32
+    through the encoder chain — casting each layer back to fp16
+    re-introduced Inf on longer/portrait clips (Abatantuono @vid-1).
+    quant_conv is a plain 1x1 Conv3d, so `_encode_moments` also runs it
+    in fp32 for the same reason.
     """
     try:
         from comfy.ldm.minimax.vae import (
@@ -462,9 +637,9 @@ def _patch_h3_video_vae_mps_encode():
             b, c, t, h, w = x.shape
             x = x.permute(0, 2, 1, 3, 4).contiguous().view(b * t, c, h, w)
             if x.device.type == "mps":
-                weight = None if self.weight is None else self.weight.float()
-                bias = None if self.bias is None else self.bias.float()
-                x = F.group_norm(x.float(), self.num_groups, weight, bias, self.eps)
+                _promote_mps_fp32_params(self)
+                x = F.group_norm(
+                    x.float(), self.num_groups, self.weight, self.bias, self.eps)
             else:
                 x = torch.nn.GroupNorm.forward(self, x)
             return x.view(b, t, c, h, w).permute(0, 2, 1, 3, 4).contiguous()
@@ -476,19 +651,10 @@ def _patch_h3_video_vae_mps_encode():
 
     def conv_forward(self, x, pre_norm=None, spatial_pad=None, residual=None):
         if getattr(x, "device", None) is not None and x.device.type == "mps":
-            saved_w = self.weight.data
-            saved_b = None if self.bias is None else self.bias.data
-            self.weight.data = saved_w.float()
-            if saved_b is not None:
-                self.bias.data = saved_b.float()
-            try:
-                return orig_conv(
-                    self, x.float(), pre_norm, spatial_pad,
-                    None if residual is None else residual.float())
-            finally:
-                self.weight.data = saved_w
-                if saved_b is not None:
-                    self.bias.data = saved_b
+            _promote_mps_fp32_params(self)
+            return orig_conv(
+                self, x.float(), pre_norm, spatial_pad,
+                None if residual is None else residual.float())
         return orig_conv(self, x, pre_norm, spatial_pad, residual)
 
     CausalConv3d.forward = conv_forward
@@ -497,18 +663,8 @@ def _patch_h3_video_vae_mps_encode():
 
     def encode_moments(self, x):
         if getattr(x, "device", None) is not None and x.device.type == "mps":
-            qc = self.quant_conv
-            saved_w = qc.weight.data
-            saved_b = None if qc.bias is None else qc.bias.data
-            qc.weight.data = saved_w.float()
-            if saved_b is not None:
-                qc.bias.data = saved_b.float()
-            try:
-                return orig_moments(self, x.float())
-            finally:
-                qc.weight.data = saved_w
-                if saved_b is not None:
-                    qc.bias.data = saved_b
+            _promote_mps_fp32_params(self.quant_conv)
+            return orig_moments(self, x.float())
         return orig_moments(self, x)
 
     MiniMaxH3VideoVAE._encode_moments = encode_moments
@@ -700,6 +856,11 @@ def protect_h3_mps():
     Called again when the pack imports, after ComfyUI core is loaded, so
     attention patches actually bind. Prestartup only runs `shield_h3_mps`
     so this file does not import torch before ComfyUI wants it.
+
+    mtlflashattn is **not** forced here. Live Ref2VA with the flash wrapper
+    produced noise (2026-09-24); the known-good Metal path is Continuity's
+    patched sub-quadratic attention. Flash stays in metal_attn science only
+    until a call-site integration is proven bit-exact on a real sample.
     """
     env = shield_h3_mps()
     patched = [
@@ -712,12 +873,13 @@ def protect_h3_mps():
     if any(patched):
         print("[Continuity Mac] forced MPS H3 attention: zeros not empty "
               "(ComfyUI#15804), bf16→fp32 upcast, 2^30 chunk cap "
-              "(ComfyUI#14837). AppleSilicon-FP8 fused RoPE/RMSNorm off; "
-              "pytorch SDPA left off (dense QK). Sage/kitchen/SLA refused. "
-              "Ref2VA video encode on GPU (fp32 activations end-to-end, "
-              "no encoder clone). DeepStack mask guard on. "
-              "MPS watermark low=%s high=%s (ASFP8 0.8/1.0 was holding "
-              "the 512 GB pool)."
+              "(ComfyUI#14837), sub-quadratic (mtlflashattn NOT forced — "
+              "live flash wrapper produced noise). AppleSilicon-FP8 fused "
+              "RoPE/RMSNorm off; dense pytorch SDPA left off. "
+              "Sage/kitchen/SLA refused. Ref2VA video encode on GPU "
+              "(fp32 activations end-to-end, no encoder clone). DeepStack "
+              "mask guard on. MPS watermark low=%s high=%s (ASFP8 0.8/1.0 "
+              "was holding the 512 GB pool)."
               % (os.environ.get("PYTORCH_MPS_LOW_WATERMARK_RATIO"),
                  os.environ.get("PYTORCH_MPS_HIGH_WATERMARK_RATIO")),
               flush=True)

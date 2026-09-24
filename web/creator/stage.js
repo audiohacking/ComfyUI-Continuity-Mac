@@ -867,9 +867,14 @@ export class Stage {
       class: "mmc-stage-video",
       src: this.frame,
       oncontextmenu: noMenu,
-      // Settings → Nodes decides whether it moves before being asked; a stage
-      // told to hold still holds the clip's first frame (preload paints it).
-      autoplay: uiSetting("autoplay_previews", true),
+      // Always moving, whatever Settings → Nodes says about finished renders.
+      // A step preview is silent, has no controls, and is the one render that
+      // is sampling right now — "Waits for play" is for a canvas of finished
+      // clips decoding for nobody, and applied here it left the stage on a
+      // still that no click could start ([#95]). Whether this is a <video> at
+      // all is KJNodes' call: its encoder order now prefers x264 over WebP, so
+      // the animated preview that used to be an <img> arrives as mp4 instead.
+      autoplay: true,
       loop: true, playsinline: true, preload: "metadata",
       onloadedmetadata: (event) => this.setAspect(event.currentTarget.videoWidth,
                                                   event.currentTarget.videoHeight),

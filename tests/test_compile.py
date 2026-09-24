@@ -531,22 +531,21 @@ check("a sound-only clip can be trimmed",
 
 # --- reference size ----------------------------------------------------------
 #
-# The default is per kind, and both halves of it are the behaviour that shipped
-# before video had the setting at all: an image with nothing said is encoded to
-# the generation's pixel area, a video to core's 768 reference canvas. Getting
-# this backwards would silently re-encode every existing video reference at a
-# different size, so it is worth pinning.
+# Continuity Metal: images default to match (may ask for max); video is locked
+# to match — an explicit max is coerced so a blob cannot pick the slow token
+# budget by mistake.
 
 check("an image defaults to match", build(assets=[image("img-1")]).ref_images[0].ref_size, "match")
-check("a video defaults to max", build(assets=[video("vid-1")]).ref_videos[0].ref_size, "max")
+check("a video defaults to match (Metal lock)",
+      build(assets=[video("vid-1")]).ref_videos[0].ref_size, "match")
 check("an image can ask for max",
       build(assets=[image("img-1", ref_size="max")]).ref_images[0].ref_size, "max")
-check("a video can ask for match",
-      build(assets=[video("vid-1", ref_size="match")]).ref_videos[0].ref_size, "match")
+check("a video asking for max is coerced to match",
+      build(assets=[video("vid-1", ref_size="max")]).ref_videos[0].ref_size, "match")
 # A clip taken for its sound has no picture to size, and lands in the audio
 # bucket where nothing reads the field — but it must still parse.
 check("a sound-only clip carries the video default",
-      build(assets=[image("img-1"), video("vid-1", track="sound")]).ref_audios[0].ref_size, "max")
+      build(assets=[image("img-1"), video("vid-1", track="sound")]).ref_audios[0].ref_size, "match")
 expect_error("unknown ref_size",
              lambda: build(assets=[image("img-1", ref_size="huge")]), "must be 'match' or 'max'")
 

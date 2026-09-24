@@ -473,7 +473,11 @@ def load_all(compiled):
             # real part of the wait before sampling — `encode._cached` has just
             # said this reference is being encoded, and this says which half of
             # that is happening now.
-            logging.info("[MiniMax] @%s: decoding %s", asset.handle, asset.filename)
+            start, duration = _decode_window(asset.trim, limit)
+            window = (f"{start:.2f}s..{start + duration:.2f}s" if duration
+                      else f"{start:.2f}s..EOF")
+            logging.info("[MiniMax] @%s: decoding %s (%s)",
+                         asset.handle, asset.filename, window)
             frames, audio = load_video(
                 asset.filename, want_audio=asset.track == "picture+sound",
                 trim=asset.trim, max_seconds=limit, crop=asset.crop)

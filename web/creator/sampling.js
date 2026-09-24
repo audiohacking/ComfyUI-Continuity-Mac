@@ -41,28 +41,30 @@ export const SAMPLING_WIDGETS = [
   "fp16_accumulation",
 ];
 
-// `sage` is in that list and is never drawn: it is the switch `attention`
-// replaced, kept so a workflow saved with it on still runs sage, and hidden so
-// nobody sets it from two places. See `adoptSage`.
+// `sage` is in that list and is never drawn: it is the retired switch
+// `attention` replaced. Continuity Mac clears it and pins attention to default
+// (see `adoptMetalAttention`).
 
 const ATTENTION_TITLE = {
-  default: "The checkpoint's own attention.",
-  sage: "Sage attention — H3's attention runs quantized. Faster, and lower peak VRAM. Needs ComfyUI-KJNodes and sageattention on an NVIDIA card.",
-  kitchen: "Comfy Kitchen attention — core's own int8 kernel, nothing to install. Needs a ComfyUI whose build ships it.",
-  sla: "SLA sparse attention — H3 attends a fraction of the key blocks instead of all of them. Pays off on long, high-resolution shots and is made for the lightx2v SLA turbo LoRA. Needs ComfyUI-PlagueKind-Nodes and Triton.",
+  default: "Patched sub-quadratic attention — Continuity Mac's known-good H3 path on Metal (zeros-not-empty, bf16 upcast, elem cap). Flash is science-only until proven bit-exact.",
 };
 
-// Noun first, the way the cache pill reads ("cache off", "cache fast"): the
-// pill has to say what it is a choice *about*, and a pill reading "kitchen"
-// on its own says nothing at all to somebody who has not read the release
-// notes. The backends keep their own names — they are what the packs and core
-// call them, and searching for either finds the right page.
 const ATTENTION_LABEL = {
   default: "attention default",
-  sage: "attention sage",
-  kitchen: "attention kitchen",
-  sla: "attention sla",
 };
+
+/**
+ * Force Continuity Mac's only attention mode onto a reloaded workflow.
+ *
+ * Sage / kitchen / SLA / Laya are retired here. A node saved with one of them
+ * (or with the old sage switch) would otherwise keep showing and queueing that
+ * experiment. Clear the switch and pin the list to default.
+ */
+function adoptMetalAttention(widgets, set) {
+  if (widgets.sage?.value) set("sage", false);
+  const value = String(widgets.attention?.value ?? "default");
+  if (value !== "default") set("attention", "default");
+}
 
 const BLOCK_CACHE_TITLE = {
   off: "Step caching is off.",
@@ -72,24 +74,6 @@ const BLOCK_CACHE_TITLE = {
   easy: "EasyCache — core's own step reuse, nothing to install. Cannot be combined with Spectrum.",
   tea: "TeaCache — skips transformer forwards on timestep similarity. Needs ComfyUI-MiniMaxH3-TeaCache.",
 };
-
-/**
- * Carry a workflow saved with the old `sage` switch onto the `attention` list.
- *
- * The switch became one option of a list, and the two cannot both be authority
- * or a node would say sage in one place and default in the other. So the switch
- * is read exactly once — the first time a node carrying it is drawn — moved onto
- * the list and cleared, and after that the list is the only thing that decides.
- * A node that never had it on passes straight through and nothing is written.
- *
- * Only while the list is still at its default: a workflow saved *after* the
- * rename has already answered this, including by answering "default".
- */
-function adoptSage(widgets, set) {
-  if (!widgets.sage?.value) return;
-  if (String(widgets.attention?.value ?? "default") === "default") set("attention", "sage");
-  set("sage", false);
-}
 
 /**
  * Read and write the real widgets, by name.
@@ -135,7 +119,7 @@ export function widgetIO(widgets, onChange) {
  *  run they described.
  *
  *  `sage` is here for the opposite reason: it is the retired switch, and the one
- *  thing `adoptSage` does with it is *clear* it. A clear that landed in the blob
+ *  thing `adoptMetalAttention` does with it is *clear* it. A clear that landed in the blob
  *  would leave the widget still on, so the switch would be adopted again on
  *  every mount and could never be put down. It predates the list, no pill writes
  *  one, and `sampling.py` reads it off the widgets for the same reason. */
@@ -962,8 +946,10 @@ export function samplingBar({ widgets, value, set, perSegment = false,
   // Last of the accelerators, and the three that do not change which steps run —
   // they change what an attention call costs, what the MLP peaks at and how a
   // matmul accumulates, so they sit with them but rule nothing else out.
-  if (widgets.attention) adoptSage(widgets, set);
-  const attention = widgets.attention ? String(value("attention", "default")) : null;
+  if (widgets.attention) adoptMetalAttention(widgets, set);
+  // Continuity Mac: only default is live. A reloaded blob may still say sla/etc.
+  // until set() lands — coerce for what the row draws.
+  const attention = widgets.attention ? "default" : null;
   const sparsity = S_widgetsOf(family).find((w) => w.id === "sla_sparsity");
   const lowVram = Boolean(value("chunk_ffn", false));
   const fastMath = Boolean(value("fp16_accumulation", false));

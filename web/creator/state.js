@@ -326,10 +326,8 @@ export const DEFAULT_TRACK = REFERENCE.default_track;
 
 /** What a reference is encoded at when nobody said. Mirrors compile.DEFAULT_REF_SIZE.
  *
- *  Per kind, because "max" is a different ceiling for each: an image's is the
- *  reference pipeline's 2048 short edge, a video's is core's 768 reference
- *  canvas, which is already all a video ever gets. Audio has no size and is not
- *  in the table. */
+ *  Per kind. Video is locked to match on Continuity Metal (see compile) — the
+ *  UI no longer offers max for clips. Images may still choose max for identity. */
 export const DEFAULT_REF_SIZE = REFERENCE.sizes;
 
 /** The track a picked clip lands with: what it asked for, else the default —
@@ -340,8 +338,10 @@ export const trackFor = (picked) =>
     : (picked.track ?? DEFAULT_TRACK);
 
 /** The setting in force for an asset — the stored one, or its kind's default.
- *  Read this rather than `asset.ref_size`, which an older blob simply omits. */
-export const refSize = (asset) => asset.ref_size || DEFAULT_REF_SIZE[asset.kind] || "match";
+ *  Video is locked to match on Continuity Metal (compile coerces too). */
+export const refSize = (asset) =>
+  asset?.kind === "video" ? "match"
+    : (asset.ref_size || DEFAULT_REF_SIZE[asset.kind] || "match");
 
 /** A saved reference: its latent was encoded when it was made and is read off
  *  the file, so it has no size, no cut, no trim and no soundtrack to choose.
@@ -381,9 +381,12 @@ export function framedSize(size, crop) {
   };
 }
 
-/** Whether an asset has a size to choose at all. */
+/** Whether an asset has a size to choose at all. Video is locked to match. */
 export const sizeable = (asset) =>
-  asset.role === "reference" && DEFAULT_REF_SIZE[asset.kind] !== undefined && !isRefMod(asset);
+  asset.role === "reference"
+  && asset.kind !== "video"
+  && DEFAULT_REF_SIZE[asset.kind] !== undefined
+  && !isRefMod(asset);
 
 /** What of a reference is actually the reference. "full" — the default — is
  *  the whole file; the others narrow it so "them from @img-1" stops dragging the
@@ -1917,6 +1920,7 @@ function serializeAssets(assets) {
     if (asset.kind === "video") out.track = asset.track || DEFAULT_TRACK;
     // Only what departs from the backend's own default for the kind, so the
     // common setting adds nothing and an old blob round-trips unchanged.
+    // Video is locked to match — never serialize a size for it.
     if (sizeable(asset) && refSize(asset) !== DEFAULT_REF_SIZE[asset.kind]) {
       out.ref_size = refSize(asset);
     }
@@ -4274,6 +4278,9 @@ export function emptyPreStage() {
     edition: PRESTAGE_DEFAULT_EDITION,
     // Ideogram's speed axis: which official preset shapes the schedule.
     quality: PRESTAGE_DEFAULT_QUALITY,
+    // The rows dialled for the arches this node is not on — `{arch: row}`,
+    // the piece's `sampling_spare` on the still side. See `PreStageRow.setArch`.
+    sampling_spare: {},
     // The video family's branch: its own settings, and its generation in the
     // Creator's shape. Nothing above it applies to that branch — see
     // `emptyStill`. The key is the arch's frozen blob name.
@@ -4356,6 +4363,21 @@ export function emptyPreStageModels() {
   return empty;
 }
 
+/** The rows this node dialled for the arches it is not on — `{arch: row}`.
+ *  The piece's `parseSamplingSpare`, keyed by arch: `cfg` is spelled the same
+ *  on Krea and Ideogram and means numbers an order apart, so a row carried
+ *  across the arch pill is one model's guidance quietly in force on another's
+ *  weights. `PreStageRow.setArch` sets it aside and hands it back instead. */
+export function parsePreStageSamplingSpare(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const arch of PRESTAGE_ARCHES) {
+    const row = parseSampling(raw[arch]);
+    if (Object.keys(row).length) out[arch] = row;
+  }
+  return out;
+}
+
 export function parsePreStage(raw) {
   try {
     const parsed = JSON.parse(raw);
@@ -4404,6 +4426,7 @@ export function parsePreStage(raw) {
       // list. A still architecture that wants a row of its own would ask for it
       // here, the way `parseTimeline` asks for the piece's family's.
       state.sampling = parseSampling(state.sampling);
+      state.sampling_spare = parsePreStageSamplingSpare(state.sampling_spare);
       if (!PRESTAGE_REF_METHODS.includes(state.ref_method)) {
         state.ref_method = PRESTAGE_DEFAULT_REF_METHOD;
       }
@@ -4472,6 +4495,8 @@ export function serializePreStage(state) {
     ...(state.edition !== PRESTAGE_DEFAULT_EDITION ? { edition: state.edition } : {}),
     [PRESTAGE_STILL_ARCH]: serializeStill(state[PRESTAGE_STILL_ARCH]),
     ...serializeSampling(state.sampling),
+    ...(Object.keys(parsePreStageSamplingSpare(state.sampling_spare)).length
+      ? { sampling_spare: parsePreStageSamplingSpare(state.sampling_spare) } : {}),
     ...(Object.keys(models).length ? { models } : {}),
     ...(state.peer != null ? { peer: state.peer } : {}),
   }, null, 2);

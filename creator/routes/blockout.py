@@ -22,6 +22,7 @@ from server import PromptServer
 
 from .. import blockout
 
+from ..guard import same_origin
 # One request's worth of frames. Generous against the batches the bench
 # actually sends (two dozen 720p PNGs), tight against the route being a place
 # to park arbitrary bytes.
@@ -29,6 +30,7 @@ MOST_BATCH_BYTES = 256 * 1024 * 1024
 
 
 @PromptServer.instance.routes.post("/continuity/blockout/frames")
+@same_origin
 async def take_frames(request):
     """A batch of rendered frames into staging. -> `{held}`.
 
@@ -64,6 +66,7 @@ async def take_frames(request):
 
 
 @PromptServer.instance.routes.post("/continuity/blockout/write")
+@same_origin
 async def write_clip(request):
     """Encode the staged frames into the input folder. -> `{path, kind}`."""
     try:

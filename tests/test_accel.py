@@ -255,6 +255,29 @@ class FakeSLA:
         return (("sla", model, tuple(sorted(kwargs.items()))),)
 
 
+class FakeLaya:
+    """`H3LayaNativeSLAPatch.INPUT_TYPES` as this pack plans it."""
+
+    FUNCTION = "patch"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "sdk_python": ("STRING", {"default": ""}),
+            },
+            "optional": {
+                "initial_policy": (["jev_first", "laya_first", "fixed5", "fixed10"],),
+                "initial_context": ("STRING", {"default": "{}"}),
+                "prompt_context": ("STRING", {"default": ""}),
+            },
+        }
+
+    def patch(self, model, **kwargs):
+        return (("laya", model, tuple(sorted(kwargs.items()))),)
+
+
 class FakeChunkFFN:
     """`MiniMaxChunkFeedForward.define_schema`, as the registry holds it."""
 
@@ -305,10 +328,12 @@ class FakeVDN:
 
 
 def install(*, block_cache=True, spectrum=True, easycache=True, teacache=True, sage=True,
-            kitchen=True, sla=True, chunk_ffn=True, torch_settings=True, vdn=True):
+            kitchen=True, sla=True, laya=True, chunk_ffn=True, torch_settings=True, vdn=True):
     NODES.NODE_CLASS_MAPPINGS = {}
     if sla:
         NODES.NODE_CLASS_MAPPINGS[accel.SLA_NODE] = FakeSLA
+    if laya:
+        NODES.NODE_CLASS_MAPPINGS[accel.LAYA_NODE] = FakeLaya
     if vdn:
         NODES.NODE_CLASS_MAPPINGS[accel.VDN_NODE] = FakeVDN
     if block_cache:
@@ -432,83 +457,39 @@ expect_error("a core without EasyCache says to update",
              "update ComfyUI")
 
 # ---- the attention backend --------------------------------------------------
+#
+# Continuity Mac offers only `default` (patched sub-quad on Metal). Retired
+# names still parse / plan as default so a reloaded workflow cannot keep an
+# experiment on.
 
 install()
-check("attention is the checkpoint's own by default", accel.Settings().attention, "default")
+check("attention is default", accel.Settings().attention, "default")
 check("default attention plans nothing", accel.plan(accel.Settings()), [])
-check("sage alone counts as an accelerator", accel.Settings(attention="sage").any, True)
-check("kitchen alone counts as an accelerator", accel.Settings(attention="kitchen").any, True)
+check("ATTENTION_MODES is Metal-only", accel.ATTENTION_MODES, ["default"])
 
-sage = accel.plan(accel.Settings(attention="sage"))
-check("sage plans kijai's node", [node_id for node_id, _ in sage], [accel.SAGE_NODE])
-check("sage is built with model alone", sage[0][1], {})
+for retired in accel.RETIRED_ATTENTION:
+    check(f"sanitize coerces {retired} to default",
+          accel.sanitize_attention(accel.Settings(attention=retired)).attention, "default")
+    check(f"plan({retired}) emits no attention node",
+          accel.plan(accel.Settings(attention=retired)), [])
 
-kitchen = accel.plan(accel.Settings(attention="kitchen"))
-check("kitchen plans core's node", [node_id for node_id, _ in kitchen], [accel.KITCHEN_NODE])
-check("kitchen asks for the kernel by core's own name",
-      kitchen[0][1], {"attention": accel.KITCHEN_OPTION})
+# Settings.any still sees a non-default string as "on" before sanitize — the
+# dataclass does not coerce. Plan does. That is intentional: the widget/blob
+# may still carry the old name until adoptMetalAttention clears it.
+check("retired sage still flags .any before sanitize",
+      accel.Settings(attention="sage").any, True)
 
-# The sparse backend: the block size off the class, through the V3 shim, the
-# sparsity ours (#78 — the pack's own default has moved between releases, and
-# it is the number the quality trade turns on), and none of the optional
-# inputs — those are `execute`'s to default (#23).
-check("sla alone counts as an accelerator", accel.Settings(attention="sla").any, True)
-sla = accel.plan(accel.Settings(attention="sla"))
-check("sla plans the pack's node", [node_id for node_id, _ in sla], [accel.SLA_NODE])
-check("sla is built at the row's sparsity and the pack's block size",
-      sla[0][1], {"sparsity_ratio": accel.SLA_SPARSITY_DEFAULT, "block_size": "32"})
-check("the default sparsity is the LoRA's, not the fixture's",
-      accel.SLA_SPARSITY_DEFAULT, 0.85)
-check("a dialled sparsity reaches the node",
-      accel.plan(accel.Settings(attention="sla", sla_sparsity=0.7))[0][1]["sparsity_ratio"], 0.7)
-check("sparsity is read only under sla",
-      "sparsity_ratio" in accel.plan(accel.Settings(attention="kitchen", sla_sparsity=0.7))[0][1],
-      False)
-check("sla's direct path runs through the V3 shim",
-      accel.direct_apply("MODEL", accel.Settings(attention="sla"))[:2], ("sla", "MODEL"))
-
-# One backend at a time: a model has one attention, so a plan never holds two.
-for backend in ("sage", "kitchen", "sla"):
-    planned = [n for n, _ in accel.plan(accel.Settings(attention=backend))]
-    check(f"'{backend}' plans exactly one attention node", len(planned), 1)
-
-# No backend is a step-caching accelerator, so unlike the three that are
-# they rule nothing out — every cache and Spectrum both have to survive beside
-# them. The one pair that is refused stays refused for its own reason.
-for backend, node_id in (("sage", accel.SAGE_NODE), ("kitchen", accel.KITCHEN_NODE),
-                         ("sla", accel.SLA_NODE)):
-    for mode in ("safe", "fast", "aggressive", "easy", "tea"):
-        planned = [n for n, _ in accel.plan(accel.Settings(block_cache=mode, attention=backend))]
-        check(f"{backend} composes with '{mode}'", (planned[0], len(planned)), (node_id, 2))
-expect_error("sage does not rescue easy + spectrum",
-             lambda: accel.plan(accel.Settings(block_cache="easy", spectrum=True, attention="sage")),
-             "EasyCache")
-expect_error("a backend this build does not know is refused",
+expect_error("a backend this build never knew is refused",
              lambda: accel.plan(accel.Settings(attention="flash")),
              "unknown attention backend")
 
-# A ComfyUI whose build cannot run the kernel does not offer it, and is told so
-# rather than quietly sampling on pytorch attention — which is what core's own
-# node does with a name it does not know.
-install()
-NODES.NODE_CLASS_MAPPINGS[accel.KITCHEN_NODE] = KernelLessKitchen
-expect_error("a build without the kernel is refused by name",
-             lambda: accel.plan(accel.Settings(attention="kitchen")),
-             accel.KITCHEN_OPTION)
-
-install(sage=False)
-expect_error("missing sage pack names the node",
-             lambda: accel.plan(accel.Settings(attention="sage")), accel.SAGE_NODE)
-expect_error("missing sage pack names KJNodes and the library",
-             lambda: accel.plan(accel.Settings(attention="sage")), "kijai/ComfyUI-KJNodes")
-install(kitchen=False)
-expect_error("a core without the attention node says to update",
-             lambda: accel.plan(accel.Settings(attention="kitchen")), "update ComfyUI")
-install(sla=False)
-expect_error("missing sla pack names the node",
-             lambda: accel.plan(accel.Settings(attention="sla")), accel.SLA_NODE)
-expect_error("missing sla pack names PlagueKind and Triton",
-             lambda: accel.plan(accel.Settings(attention="sla")), "PlagueKind-Nodes (needs Triton")
+# Cache / Spectrum composition still works with default attention.
+for mode in ("safe", "fast", "aggressive", "easy", "tea"):
+    planned = [n for n, _ in accel.plan(accel.Settings(block_cache=mode))]
+    check(f"default attention composes with '{mode}'", len(planned), 1)
+expect_error("easy + spectrum still refused",
+             lambda: accel.plan(accel.Settings(block_cache="easy", spectrum=True)),
+             "EasyCache")
 
 # ---- the chunked feed-forward -----------------------------------------------
 
@@ -563,12 +544,12 @@ expect_error("missing torch settings node names KJNodes",
 # skip nothing stay on, because every step still runs and each one is cheaper.
 install()
 kept = accel.uncached(accel.Settings(block_cache="fast", spectrum=True,
-                                     attention="sage", chunk_ffn=True,
+                                     attention="default", chunk_ffn=True,
                                      fp16_accumulation=True))
 check("the lead-in drops the caches",
       (kept.block_cache, kept.spectrum), ("off", False))
 check("the lead-in keeps everything that skips nothing",
-      (kept.attention, kept.chunk_ffn, kept.fp16_accumulation), ("sage", True, True))
+      (kept.attention, kept.chunk_ffn, kept.fp16_accumulation), ("default", True, True))
 
 # ---- VDN-H3 -----------------------------------------------------------------
 #
@@ -585,22 +566,21 @@ check("a stage plans our node with the stage and the switch",
       staged, [(accel.VDN_NODE, {"checkpoint": "stage-x", "turbo": True})])
 check("the adapter follows the switch",
       accel.plan(accel.Settings(vdn="stage-x"))[0][1]["turbo"], False)
-check("vdn goes on before everything that reads the attention",
+check("vdn goes on before chunked ffn / cache / spectrum (attention is forced default)",
       [n for n, _ in accel.plan(accel.Settings(vdn="stage-x", attention="kitchen",
                                                chunk_ffn=True, block_cache="fast",
                                                spectrum=True))],
-      [accel.VDN_NODE, accel.KITCHEN_NODE, accel.CHUNK_FFN_NODE,
+      [accel.VDN_NODE, accel.CHUNK_FFN_NODE,
        accel.BLOCK_CACHE_NODE, accel.SPECTRUM_NODE])
-expect_error("sage and vdn own the same forward and are refused together",
-             lambda: accel.plan(accel.Settings(vdn="stage-x", attention="sage")), "sage")
-expect_error("sla under vdn would reach nothing and is refused",
-             lambda: accel.plan(accel.Settings(vdn="stage-x", attention="sla")),
-             "nothing to sparsify")
+# Retired attention under VDN coerces to default — no conflict to refuse.
+check("retired sage under vdn coerces and plans the stage only",
+      accel.plan(accel.Settings(vdn="stage-x", attention="sage")),
+      [(accel.VDN_NODE, {"checkpoint": "stage-x", "turbo": False})])
 held = accel.opening(accel.Settings(vdn="stage-x", vdn_turbo=True, block_cache="fast",
-                                    attention="kitchen"))
+                                    attention="default"))
 check("the opening sitting holds the adapter off and the caches off, keeps the stage",
       (held.vdn, held.vdn_turbo, held.block_cache, held.attention),
-      ("stage-x", False, "off", "kitchen"))
+      ("stage-x", False, "off", "default"))
 check("uncached alone leaves the adapter where the switch put it",
       accel.uncached(accel.Settings(vdn="stage-x", vdn_turbo=True)).vdn_turbo, True)
 install(vdn=False)
@@ -623,24 +603,22 @@ check("block cache takes the incoming link", graph.built[0][1]["model"], "MODEL_
 check("spectrum chains off the block cache", graph.built[1][1]["model"], f"{accel.BLOCK_CACHE_NODE}:0")
 check("the sampler gets spectrum's output", out, f"{accel.SPECTRUM_NODE}:0")
 
-# Sage goes on first of all three, so the caches wrap a model whose attention is
-# already quantized rather than the other way round.
+# No attention node on Continuity Mac — chunked ffn / torch settings lead.
 everything = accel.Settings(block_cache="fast", spectrum=True,
                             attention="sage", chunk_ffn=True,
                             fp16_accumulation=True)
-check("the per-call patches are applied before the cache and spectrum",
+check("retired attention is omitted; per-call patches still precede cache/spectrum",
       [node_id for node_id, _ in accel.plan(everything)],
-      [accel.SAGE_NODE, accel.CHUNK_FFN_NODE, accel.TORCH_SETTINGS_NODE,
+      [accel.CHUNK_FFN_NODE, accel.TORCH_SETTINGS_NODE,
        accel.BLOCK_CACHE_NODE, accel.SPECTRUM_NODE])
 
 graph = FakeGraph()
 out = accel.graph_apply(graph, "MODEL_LINK", everything)
-check("sage takes the incoming link", graph.built[0][1]["model"], "MODEL_LINK")
-check("the chunked ffn chains off sage", graph.built[1][1]["model"], f"{accel.SAGE_NODE}:0")
+check("chunked ffn takes the incoming link", graph.built[0][1]["model"], "MODEL_LINK")
 check("the torch settings chain off the chunked ffn",
-      graph.built[2][1]["model"], f"{accel.CHUNK_FFN_NODE}:0")
+      graph.built[1][1]["model"], f"{accel.CHUNK_FFN_NODE}:0")
 check("the cache chains off the torch settings",
-      graph.built[3][1]["model"], f"{accel.TORCH_SETTINGS_NODE}:0")
+      graph.built[2][1]["model"], f"{accel.TORCH_SETTINGS_NODE}:0")
 check("the sampler still gets spectrum's output", out, f"{accel.SPECTRUM_NODE}:0")
 
 # ---- a missing pack says which, and where to get it -------------------------
@@ -681,60 +659,18 @@ check("direct_apply chains both packs in order",
       (result[0], result[1][0]), ("spectrum", "block_cache"))
 check("direct_apply is a no-op when off", accel.direct_apply("MODEL", accel.Settings()), "MODEL")
 
-# The V3 half of the same contract: a node whose `FUNCTION` is the shim's
-# generated name rather than a method its author wrote still runs, and still
-# comes back through `[0]`.
-check("direct_apply runs a V3 node through its shim",
-      accel.direct_apply("MODEL", accel.Settings(attention="sage"))[:2], ("sage", "MODEL"))
+# Retired attention: direct_apply is a no-op (sanitize → default → no nodes).
+check("direct_apply ignores retired sage",
+      accel.direct_apply("MODEL", accel.Settings(attention="sage")), "MODEL")
 
-# Kitchen's V3 migration must not turn the type string "COMBO" into a list of
-# letters or mistake its default (pytorch) for the user's requested kernel.
-for kitchen_class in (FakeKitchen, FakeKitchenV3):
+# Kitchen / sage backends are retired — installing kitchen fixtures must not
+# resurrect them through plan().
+for kitchen_class in (FakeKitchen, FakeKitchenV3, KernelLessKitchen, KernelLessKitchenV3):
     install()
     NODES.NODE_CLASS_MAPPINGS[accel.KITCHEN_NODE] = kitchen_class
-    label = kitchen_class.__name__
-    settings = accel.Settings(attention="kitchen")
-    expected = {"attention": accel.KITCHEN_OPTION}
-    check(f"{label} plans the requested kernel", accel.plan(settings),
-          [(accel.KITCHEN_NODE, expected)])
-    graph = FakeGraph()
-    check(f"{label} graph returns the patched model",
-          accel.graph_apply(graph, "MODEL_LINK", settings), f"{accel.KITCHEN_NODE}:0")
-    check(f"{label} graph receives the selected kernel", graph.built,
-          [(accel.KITCHEN_NODE, {"model": "MODEL_LINK", **expected})])
-    check(f"{label} direct path receives the selected kernel",
-          accel.direct_apply("MODEL", settings),
-          ("kitchen", "MODEL", tuple(sorted(expected.items()))))
-
-for kitchen_class in (KernelLessKitchen, KernelLessKitchenV3):
-    install()
-    NODES.NODE_CLASS_MAPPINGS[accel.KITCHEN_NODE] = kitchen_class
-    label = kitchen_class.__name__
-    expect_error(f"{label} still rejects an unavailable kernel",
-                 lambda: accel.plan(accel.Settings(attention="kitchen")),
-                 "offers ['pytorch attention']")
-    check(f"{label} does not prevent default attention", accel.plan(accel.Settings()), [])
-    check(f"{label} does not change sage planning",
-          accel.plan(accel.Settings(attention="sage")), [(accel.SAGE_NODE, {})])
-
-# Missing/malformed options must fail closed, not pass a substring check on a
-# string and let core silently fall back to a different backend.
-class MalformedKitchen(FakeKitchenV3):
-    declared = None
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {"required": {"model": ("MODEL",), "attention": cls.declared}}
-
-
-for declared in (("COMBO", {}), ("COMBO", {"options": accel.KITCHEN_OPTION}),
-                 ("COMBO", {"options": None}), (accel.KITCHEN_OPTION,),
-                 ("COMBO", {"options": {accel.KITCHEN_OPTION: True}}),
-                 ("STRING", {"options": [accel.KITCHEN_OPTION]}), (), None):
-    install()
-    MalformedKitchen.declared = declared
-    NODES.NODE_CLASS_MAPPINGS[accel.KITCHEN_NODE] = MalformedKitchen
-    expect_error(f"malformed kitchen declaration {declared!r}",
-                 lambda: accel.plan(accel.Settings(attention="kitchen")), "offers []")
+    check(f"{kitchen_class.__name__}: kitchen attention coerces to empty plan",
+          accel.plan(accel.Settings(attention="kitchen")), [])
+    check(f"{kitchen_class.__name__}: default attention still empty",
+          accel.plan(accel.Settings()), [])
 
 passed("all accelerator tests passed")

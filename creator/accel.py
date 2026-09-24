@@ -115,6 +115,7 @@ SPECTRUM_NODE = "SpectrumApplyMiniMaxH3"
 SAGE_NODE = "MiniMaxH3MemoryEfficientSageAttentionPatch"
 KITCHEN_NODE = "ModelAttentionBackend"
 SLA_NODE = "H3SLAAttention"
+LAYA_NODE = "H3LayaNativeSLAPatch"
 CHUNK_FFN_NODE = "MiniMaxChunkFeedForward"
 TORCH_SETTINGS_NODE = "ModelPatchTorchSettings"
 VDN_NODE = "ContinuityVDN"
@@ -150,12 +151,18 @@ SOURCES = {
     VDN_NODE: "this pack itself (creator/vdn.py) — check ComfyUI's log for an import failure",
 }
 
-# What the `attention` widget offers. One backend at a time, because a model has
-# one attention and two patches would mean the last one applied quietly won.
-# "default" is the checkpoint's own and emits no node at all.
-ATTENTION_MODES = ["default", "sage", "kitchen", "sla"]
+# What the `attention` widget offers. Continuity Metal keeps `default` =
+# patched sub-quadratic (the known-good live path). mtlflashattn stays
+# science-only after a live wrapper produced noise. Sage / kitchen / SLA / Laya
+# were NVIDIA or experiment paths — left off the list so a saved workflow or a
+# prefs click cannot put sampling back on them. Retired names still parse and
+# coerce to `default` (see `sanitize_attention`).
+ATTENTION_MODES = ["default"]
 
-# See `Settings.sla_sparsity`. The pack refuses above 0.95.
+# Names Continuity Mac used to offer. Still recognised on load, then coerced.
+RETIRED_ATTENTION = ("sage", "kitchen", "sla", "laya")
+
+# See `Settings.sla_sparsity`. Kept for blob round-trips; unused while SLA is retired.
 SLA_SPARSITY_DEFAULT = 0.85
 SLA_SPARSITY_MAX = 0.95
 
@@ -185,11 +192,8 @@ class Settings:
     spectrum: bool = False
     spectrum_blend: float = 0.5
     attention: str = "default"
-    # SLA's fraction of key blocks *skipped*, read only under `attention="sla"`.
-    # 0.85 is lightx2v's shipped value and what the SLA turbo LoRA was
-    # distilled against; the pack's own default has moved between 0.80 and
-    # 0.90 across releases, which is why this is a setting rather than left to
-    # the class (#78). Below about 0.60 the kernel is slower than dense.
+    # SLA's fraction of key blocks *skipped* — retained on the dataclass for
+    # blob compatibility while SLA itself is retired on Continuity Mac.
     sla_sparsity: float = SLA_SPARSITY_DEFAULT
     chunk_ffn: bool = False
     fp16_accumulation: bool = False
@@ -360,6 +364,22 @@ def _sla_kwargs(node, sparsity):
     return kwargs
 
 
+def sanitize_attention(settings):
+    """Coerce retired / experiment attention names to Continuity Mac's only mode.
+
+    Saved workflows and old blobs may still say sage / kitchen / sla / laya.
+    Those are not offered on the row anymore — Continuity Mac keeps
+    `default` (patched sub-quad) — so they become `default` rather than
+    refusing the queue.
+    Truly unknown names are left for `plan` to refuse.
+    """
+    if settings.attention in ATTENTION_MODES:
+        return settings
+    if settings.attention in RETIRED_ATTENTION:
+        return replace(settings, attention="default")
+    return settings
+
+
 def plan(settings, sampler_steps=None):
     """`[(node_id, kwargs), ...]` in the order they must be applied.
 
@@ -368,6 +388,7 @@ def plan(settings, sampler_steps=None):
     how a node gets run, never which nodes or with what. `sampler_steps` is the
     run's real step count, which TeaCache needs to place its skip window.
     """
+    settings = sanitize_attention(settings)
     try:
         from . import metal
         metal.refuse_mps_accel(settings)
@@ -382,18 +403,6 @@ def plan(settings, sampler_steps=None):
         raise ValueError(
             f"unknown attention backend {settings.attention!r} — "
             f"this build offers {ATTENTION_MODES}")
-    if settings.vdn != VDN_OFF and settings.attention == "sage":
-        raise ValueError(
-            "VDN-H3 and sage attention both replace each block's attention "
-            "forward, so one of them would silently be dropped. Set attention "
-            "to 'default' or 'kitchen' — the port keeps its windows on exact "
-            "attention either way — or switch VDN off.")
-    if settings.vdn != VDN_OFF and settings.attention == "sla":
-        raise ValueError(
-            "VDN-H3 runs its windows on exact attention and hands the attention "
-            "override only to the text refiner, so SLA would have nothing to "
-            "sparsify. Set attention to 'default' or 'kitchen', or switch VDN "
-            "off.")
     steps = []
     # Before everything: the hybrid attention is the model the rest of the row
     # is applied to. Ours, so the two inputs are ours to name and there is no
@@ -402,25 +411,10 @@ def plan(settings, sampler_steps=None):
         _require(VDN_NODE)
         steps.append((VDN_NODE, {"checkpoint": settings.vdn,
                                  "turbo": bool(settings.vdn_turbo)}))
-    # Then the attention, so everything downstream wraps a model whose attention
-    # is already quantized. Kijai's node has no inputs but `model` — there is no tuning
-    # there to go stale, and `node_defaults` correctly returns nothing for it.
-    if settings.attention == "sage":
-        steps.append((SAGE_NODE, node_defaults(_require(SAGE_NODE))))
-    elif settings.attention == "kitchen":
-        steps.append((KITCHEN_NODE, _kitchen_kwargs(_require(KITCHEN_NODE))))
-    elif settings.attention == "sla":
-        steps.append((SLA_NODE, _sla_kwargs(_require(SLA_NODE), settings.sla_sparsity)))
-    # Then the MLP, which is the other object patch and the other thing every
-    # step pays for. Its order against the attention does not matter — they
-    # patch different keys on different modules and neither wraps the other —
-    # so it goes here, under everything that decides which steps run at all.
+    # Attention backends other than default are retired on Continuity Mac
+    # (sanitize_attention above). Chunked FFN and the step caches remain.
     if settings.chunk_ffn:
         steps.append((CHUNK_FFN_NODE, _chunk_ffn_kwargs(_require(CHUNK_FFN_NODE))))
-    # Not a patch on the model at all, in the end: it hangs a callback that
-    # flips one torch flag while this model runs and puts it back afterwards. It
-    # sits with the others because it belongs to the same question — what one
-    # step costs — and because a run either has it or does not.
     if settings.fp16_accumulation:
         kwargs = node_defaults(_require(TORCH_SETTINGS_NODE))
         kwargs["enable_fp16_accumulation"] = True
@@ -445,13 +439,15 @@ def plan(settings, sampler_steps=None):
     return steps
 
 
-def graph_apply(graph, model, settings, sampler_steps=None):
+def graph_apply(graph, model, settings, sampler_steps=None, prompt=""):
     """Patch a MODEL *link* inside a `GraphBuilder` subgraph. Returns the new link.
 
     For the nodes that return an expanded graph rather than tensors. With both
     accelerators off this returns `model` untouched and adds nothing to the
     graph — an unused node is still a node ComfyUI has to cache and schedule.
+    `prompt` is unused (Laya retired); kept so callers do not break.
     """
+    del prompt  # Laya used to consume this; signature kept for call sites
     for node_id, kwargs in plan(settings, sampler_steps):
         model = graph.node(node_id, model=model, **kwargs).out(0)
     return model

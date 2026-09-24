@@ -6,6 +6,40 @@ exactly as it was written, wall of text and all.
 
 ## Unreleased
 
+**Metal H3 sampler: mtlflashattn rolled back; video refs locked to `match`;
+attention UI is `default` only.** Live forcing of `metal_flash_attn` through
+`optimized_attention` produced noise on Ref2VA (2026-09-24) despite science
+ladder speed/numerics on short sequences. `protect_h3_mps` is back on the
+known-good patched sub-quadratic path (zeros-not-empty, bf16→fp32 upcast,
+2^30 elem cap). Flash helpers remain for science only. Sage / kitchen / SLA /
+Laya stay removed from the attention combo. Video `ref_size` stays locked to
+`match`. Inventory: `docs/metal_sampler_opportunities.md`. **Restart Studio**
+so the rollback loads.
+
+**Metal H3 VAE encode: one-shot fp32 weight promote.** Science ladder
+(`tests/test_metal_vae_science.py`) timed the ResNet-cell ops on MPS:
+per-call `weight.float()` was a 20–40% tax vs holding fp32 params;
+`channels_last_3d` did not help; pre-conv GN+SiLU+pad is a large share
+only on small feature maps. Live `_patch_h3_video_vae_mps_encode` now
+promotes conv/norm weights once instead of cloning every forward.
+Activations stay fp32. Opportunity inventory (small wins kept, nothing
+discarded): `docs/metal_vae_opportunities.md`. No Comfy restart in this
+change.
+
+**Upstream 3.1.1–3.1.3 ports (trivial, Metal-safe).** Writing routes
+refuse cross-site simple POSTs (`creator/guard.py` + `@same_origin` on
+every Continuity POST; JSON / `X-Continuity-Request` from `api.js`).
+The live step preview no longer honours “Waits for play” after KJNodes
+ships mp4 stage videos. Switching a still family stashes and restores
+its sampler row (`sampling_spare`), as the video family switch already
+did. Chat already moved pinned still rows through `PreStageRow.setArch`.
+
+**Upstream 3.1 core deferred.** Cast wears-per-family, RefMod-per-VAE-space,
+Klein picture-sets, and the chat Thinks/Makes rewrite are product work that
+overlaps Metal-touched `encode.py` / `media.py` / `state.js`. Port later as
+a selective branch (RefMod multi-space + media stride on top of Metal VAE /
+DeepStack), not a merge of upstream main.
+
 ## 3.0.4
 
 **Ref2VA CLIP encode no longer dies on an empty Qwen3-VL DeepStack

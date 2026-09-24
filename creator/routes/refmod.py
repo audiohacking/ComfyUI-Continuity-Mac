@@ -30,6 +30,7 @@ from server import PromptServer
 
 from .. import jobs, media, refmod
 
+from ..guard import same_origin
 log = logging.getLogger(__name__)
 
 # What a full mod is encoded at when the caller does not say: the sibling
@@ -315,6 +316,7 @@ jobs.register("refmod-remake", _run_remake)
 
 
 @PromptServer.instance.routes.post("/continuity/refmod/remake")
+@same_origin
 async def remake_refmod(request):
     """Queue a re-encode of saved references in another mode: `{mods, mode, vae}`."""
     try:
@@ -341,6 +343,7 @@ async def remake_refmod(request):
 
 
 @PromptServer.instance.routes.post("/continuity/refmod/make")
+@same_origin
 async def make_refmod(request):
     """Queue the encode. The shape of the body is checked here, where a 400 with
     a sentence beats an error dialog a minute later."""
@@ -407,6 +410,7 @@ async def refmod_file(request):
 
 
 @PromptServer.instance.routes.post("/continuity/refmod/upload")
+@same_origin
 async def upload_refmod(request):
     """A .safetensors in, as `refmod:<subfolder>/<stem>`.
 
@@ -450,6 +454,7 @@ async def upload_refmod(request):
 
 
 @PromptServer.instance.routes.post("/continuity/refmod/move")
+@same_origin
 async def move_refmod(request):
     """Rename a mod, or move it between folders: `{filename, name}` -> the row."""
     body = await _json_body(request)
@@ -464,6 +469,7 @@ async def move_refmod(request):
 
 
 @PromptServer.instance.routes.post("/continuity/refmod/delete")
+@same_origin
 async def delete_refmod(request):
     """Delete a mod and its picture. Members built out of it show a missing
     tile until it is replaced — the same honest answer a deleted input file gets."""
@@ -479,6 +485,7 @@ async def delete_refmod(request):
 
 
 @PromptServer.instance.routes.post("/continuity/refmod/describe")
+@same_origin
 async def describe_refmod(request):
     """Rewrite the description in the file's header: `{filename, description}`.
     The one field of a mod worth editing, and the one their loaders show."""

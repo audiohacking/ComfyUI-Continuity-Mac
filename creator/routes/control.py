@@ -23,6 +23,7 @@ from server import PromptServer
 
 from .. import control, jobs, media
 
+from ..guard import same_origin
 # The preview is asked for on every drag of a slider and the answer is a picture.
 # Long enough that dragging back and forth is free, short enough that a source
 # file replaced under the same name is not still on screen a session later.
@@ -91,6 +92,7 @@ jobs.register("control", _run_job)
 
 
 @PromptServer.instance.routes.post("/continuity/control/run")
+@same_origin
 async def run_tracing(request):
     """Trace the whole file and put the result in the input folder.
 

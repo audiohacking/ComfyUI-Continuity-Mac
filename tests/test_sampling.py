@@ -120,32 +120,37 @@ check("the whole row reads off the block",
       (sampler.steps, sampler.cfg, sampler.sampler_name, sampler.scheduler,
        sampler.shift_video, sampler.shift_audio),
       (6, 1.5, "euler", "beta", 6.0, 2.0))
-check("...and so does the whole accelerator half",
+check("...and so does the whole accelerator half (retired attention → default)",
       (accel_settings.block_cache, accel_settings.spectrum, accel_settings.spectrum_blend,
        accel_settings.attention, accel_settings.chunk_ffn, accel_settings.fp16_accumulation),
-      ("safe", True, 0.25, "sage", True, True))
+      ("safe", True, 0.25, "default", True, True))
 check("a moved shift is a shift", sampler.shifted(), True)
 
 # SLA's sparsity is blob-only, like `vdn`: no widget slot, so an absent field
 # is the LoRA's value and a stored one is read as a number (#78).
 check("no block: sparsity is the distillation's",
       resolve(None)[1].sla_sparsity, sampling.DEFAULTS["sla_sparsity"])
-check("a stored sparsity reaches the accelerators",
+check("a stored sparsity reaches the accelerators even under retired sla",
       resolve({"attention": "sla", "sla_sparsity": 0.7})[1].sla_sparsity, 0.7)
+check("...and attention coerces to default",
+      resolve({"attention": "sla", "sla_sparsity": 0.7})[1].attention, "default")
 expect_error("a sparsity that is not a number", lambda: resolve({"sla_sparsity": "lots"}),
              "sla_sparsity")
 check("...and the defaults are not", resolve(None)[0].shifted(), False)
 
 # ---- the deprecated sage switch ---------------------------------------------
 #
-# It predates both the `attention` list and this module, so it is widget-only on
-# purpose: a blob naming an attention has said what it wants.
+# Continuity Mac no longer revives sage from the old switch — default is the
+# only Metal attention mode (patched sub-quad).
 
-check("the old switch still runs sage", resolve(None, sage=True)[1].attention, "sage")
-check("...but only while the list is at its default",
-      resolve(None, sage=True, attention="kitchen")[1].attention, "kitchen")
-check("...and a block that names one settles it",
+check("the old sage switch no longer revives sage",
+      resolve(None, sage=True)[1].attention, "default")
+check("a widget kitchen value coerces to default",
+      resolve(None, sage=True, attention="kitchen")[1].attention, "default")
+check("a block that names default stays default",
       resolve({"attention": "default"}, sage=True)[1].attention, "default")
+check("a block that names laya coerces to default",
+      resolve({"attention": "laya"})[1].attention, "default")
 
 # ---- what will not be run ----------------------------------------------------
 #

@@ -78,6 +78,8 @@ NS = _load()
 
 
 class _Request:
+    headers = {"Content-Type": "application/json"}   # past the guard; test_guard.py holds it
+
     def __init__(self, body):
         self._body = body
 

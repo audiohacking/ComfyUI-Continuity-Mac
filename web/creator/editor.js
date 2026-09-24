@@ -606,10 +606,9 @@ export class CreatorEditor {
     const handle = S.nextHandle(this.state, row.kind);
     const entry = {
       handle, kind: row.kind, role: "reference", filename: row.path,
-      // Max by default, for a picture and for a clip alike: fidelity is why a
-      // reference is attached, and "match" trading it for speed is a downgrade
-      // to opt into, not out of. Ignored for audio, which has no size.
-      ref_size: "max",
+      // Images default to max (identity). Video is locked to match on Metal —
+      // see compile.DEFAULT_REF_SIZE / S.refSize. Audio has no size.
+      ref_size: row.kind === "video" ? "match" : "max",
     };
     if (row.kind === "video") entry.track = S.trackFor(row);
     this.state.assets.push(entry);
@@ -929,7 +928,7 @@ export class CreatorEditor {
         kind: asset.kind,
         role: "reference",
         filename: asset.path,
-        ref_size: "max",
+        ref_size: asset.kind === "video" ? "match" : "max",
       };
       if (asset.kind === "video") entry.track = S.trackFor(asset);
       if (asset.trim) entry.trim = asset.trim;
@@ -1352,13 +1351,8 @@ export class CreatorEditor {
       }
       if (S.sizeable(asset)) {
         rows.push(choose(t("detail"),
-          asset.kind === "video"
-            ? t("match: scale to the generation's pixel area. max: core's 768 reference canvas — "
-              + "more detail, and much the slower of the two. A video's reference tokens are its "
-              + "whole grid once per latent frame, so at full length one clip is about as long as "
-              + "the target video itself, and all of it rides through every sampling step.")
-            : t("match: scale to the generation's pixel area. max: 2048 short edge — better identity, "
-              + "several times slower, because reference tokens ride through every sampling step."),
+          t("match: scale to the generation's pixel area. max: 2048 short edge — better identity, "
+            + "several times slower, because reference tokens ride through every sampling step."),
           [{ key: "match", label: t("match") }, { key: "max", label: t("max") }],
           S.refSize(asset),
           (key) => { asset.ref_size = key; this.commit(); }));

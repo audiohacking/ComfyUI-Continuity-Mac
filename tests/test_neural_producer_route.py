@@ -70,6 +70,8 @@ exec(compile(ast.Module(body=functions, type_ignores=[]), str(source), "exec"), 
 
 
 class Request:
+    headers = {"Content-Type": "application/json"}   # past the guard; test_guard.py holds it
+
     async def json(self):
         return {"filename": "in-memory-file.png", "on": True, "block": {"detail": 3}, "client_id": "test"}
 

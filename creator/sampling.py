@@ -107,7 +107,10 @@ _NUMBER = ("cfg", "shift_video", "shift_audio", "spectrum_blend", "sla_sparsity"
 _FLAG = ("spectrum", "chunk_ffn", "fp16_accumulation")
 _CHOICE = {
     "block_cache": accel.BLOCK_CACHE_MODES,
-    "attention": accel.ATTENTION_MODES,
+    # Retired backends still parse so a reloaded workflow is not refused —
+    # `_attention` / `sanitize_attention` coerce them to Continuity Mac's only
+    # mode (`default` / mtlflashattn).
+    "attention": list(accel.ATTENTION_MODES) + list(accel.RETIRED_ATTENTION),
 }
 
 
@@ -177,21 +180,11 @@ def resolve(data, widgets):
 def _attention(attention, sage, named):
     """Which backend the row is asking for, across the rename.
 
-    `sage` was a switch before `attention` was a list, and a workflow saved with
-    it on has to keep running sage. So the switch is read only where the list
-    has not been spoken for.
-
-    Which the widgets could not actually express. "Nobody touched the list" and
-    "somebody chose `default`" are both the string `"default"`, so on a node
-    whose old switch was on, picking `default` did nothing at all — there was no
-    way to say it. A blob can: the field is *absent* until a pill writes one, so
-    `named` is the difference between the two, and turning the attention off on
-    an old node is now a thing a user can do. Nothing already saved changes,
-    because nothing already saved has a block.
-
-    The switch itself stays widget-only. It predates all of this and no pill
-    will ever write one, so the blob has nothing to say about it.
+    Continuity Mac only offers `default` (mtlflashattn under the hood). The old
+    `sage` switch and any retired list value (sage / kitchen / sla / laya) coerce
+    to default so a reloaded workflow cannot keep an experiment on by accident.
     """
-    if sage and not named and attention == "default":
-        return "sage"
-    return attention
+    del sage, named  # legacy args; never revive sage on Continuity Mac
+    if attention in accel.ATTENTION_MODES:
+        return attention
+    return "default"

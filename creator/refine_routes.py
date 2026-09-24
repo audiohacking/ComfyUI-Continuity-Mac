@@ -33,6 +33,7 @@ from server import PromptServer
 from . import compile as compiler, jobs, media, preview, refine_local, refine_remote, refine_skill
 from .families import refine
 
+from .guard import same_origin
 # What one call will look at. Every image rides in the context window for the
 # whole generation, and a 24-card timeline with references on every card would
 # fill it with pictures and leave no room for the guide.
@@ -891,6 +892,7 @@ async def refine_remote_status(request):
 
 
 @PromptServer.instance.routes.post("/continuity/refine/remote")
+@same_origin
 async def refine_remote_configure(request):
     """Store the endpoint and, when one arrives, the key.
 
@@ -962,6 +964,7 @@ jobs.register("refine", _run_job)
 
 
 @PromptServer.instance.routes.post("/continuity/refine")
+@same_origin
 async def refine_prompt(request):
     """Start rewriting one prompt, one card, or a whole timeline.
 

@@ -31,6 +31,7 @@ from aiohttp import web
 from server import PromptServer
 
 from .. import neural, neuraltwin, settings
+from ..guard import same_origin
 
 
 def _number(query, key, fallback):
@@ -50,6 +51,7 @@ async def neural_status(request):
 
 
 @PromptServer.instance.routes.post("/continuity/neural/check")
+@same_origin
 async def neural_check(request):
     """Hash a DLL and remember its path. -> `check_dll`'s answer.
 
@@ -72,6 +74,7 @@ async def neural_check(request):
 
 
 @PromptServer.instance.routes.post("/continuity/neural/extract")
+@same_origin
 async def neural_extract(request):
     """Run the extraction. -> the status afterwards, or the sentence that stopped it."""
     try:
@@ -135,6 +138,7 @@ async def neural_of(request):
 
 
 @PromptServer.instance.routes.post("/continuity/neural/twin")
+@same_origin
 async def neural_twin(request):
     """Queue this render again with the refiner the other way round.
 

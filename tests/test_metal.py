@@ -97,6 +97,20 @@ else:
     accum_refused = False
 check("MPS refuses fp16 accumulation", accum_refused, True)
 metal.refuse_mps_accel(_Accel(attention="default"), device_type="mps")
+try:
+    metal.refuse_mps_accel(_Accel(attention="laya"), device_type="mps")
+except ValueError as err:
+    laya_refused = str(err)
+else:
+    laya_refused = ""
+check("MPS refuses retired Laya attention", "NVIDIA path" in laya_refused, True)
+
+import layout as _layout
+_accel = _layout.load("accel").accel
+check("sanitize_attention coerces laya to default",
+      _accel.sanitize_attention(_accel.Settings(attention="laya")).attention, "default")
+check("sanitize_attention leaves default alone",
+      _accel.sanitize_attention(_accel.Settings(attention="default")).attention, "default")
 
 # MiniMax H3 Attention.forward views Q as [1, S, heads, dim]. The
 # AppleSilicon-FP8 fused kernel takes L from shape[-2], i.e. heads.
@@ -131,6 +145,55 @@ q_long, kv_long = metal.mps_attn_chunks(56, 120000, 1024, None)
 check("Ref2VA-length keeps full KV", kv_long, 120000)
 check("...by shrinking q below 256 rather than chopping kv",
       q_long < 256 and 56 * q_long * kv_long <= metal.MPS_ATTN_ELEM_CAP, True)
+
+# Flash rebind: H3's minimax.model keeps a stale `from attention import
+# optimized_attention` binding. Simulate that and prove the patch updates it.
+try:
+    from metal_flash_attn import flash_attn_func  # noqa: F401
+    import types
+    import sys as _sys
+    # Prefer the same Comfy tree Studio/tests use when present.
+    for _comfy in (
+            os.environ.get("COMFYUI_PATH"),
+            os.path.expanduser("~/ComfyUI-Installs/ComfyUI/ComfyUI"),
+            os.path.expanduser("~/Documents/ComfyUI")):
+        if _comfy and os.path.isdir(_comfy) and _comfy not in _sys.path:
+            _sys.path.insert(0, _comfy)
+    import comfy.ldm.modules.attention as _att
+except Exception:  # noqa: BLE001
+    _att = None
+
+if _att is not None:
+    # Reset so this suite can exercise the patch even after protect_h3_mps.
+    _att._continuity_metal_flash = False
+    stale_fn = getattr(_att, "attention_sub_quad", _att.optimized_attention)
+    fake = types.ModuleType("comfy.ldm.minimax.model")
+    fake.optimized_attention = stale_fn
+    prior = _sys.modules.get("comfy.ldm.minimax.model")
+    _sys.modules["comfy.ldm.minimax.model"] = fake
+    try:
+        bound = metal._patch_metal_flash_attention()
+        check("metal flash patch binds when mtlflashattn + comfy are present",
+              bound, True)
+        check("…and rebinds a stale minimax.model optimized_attention import",
+              fake.optimized_attention is _att.optimized_attention, True)
+        check("…attention module itself is the flash wrapper",
+              getattr(_att, "_continuity_metal_flash", False), True)
+        # Second call must still push a late importer that missed the first pass.
+        late = types.ModuleType("comfy.ldm.minimax.vae")
+        late.optimized_attention = stale_fn
+        _sys.modules["comfy.ldm.minimax.vae"] = late
+        metal._patch_metal_flash_attention()
+        check("…late minimax.vae importer is re-pushed on a second protect",
+              late.optimized_attention is _att.optimized_attention, True)
+        del _sys.modules["comfy.ldm.minimax.vae"]
+    finally:
+        if prior is None:
+            _sys.modules.pop("comfy.ldm.minimax.model", None)
+        else:
+            _sys.modules["comfy.ldm.minimax.model"] = prior
+else:
+    print("metal flash rebind checks skipped (comfy / mtlflashattn unavailable)")
 
 was_rope = os.environ.get(metal.ASFP8_ROPE_ENV)
 was_norm = os.environ.get(metal.ASFP8_NORM_ENV)

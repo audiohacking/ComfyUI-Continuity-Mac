@@ -1,13 +1,11 @@
-"""The attention pill extends with SLA's sparsity, the way Spectrum's does
-with its blend (#78).
+"""Attention pill on Continuity Mac: `default` only; SLA sparsity is retired.
 
     python3 tests/test_sla_sparsity_pill.py
 
-The field is blob-only — the node's widget slots are frozen, so it rides the
-H3 manifest like `vdn` does — and the pill reads its range and default from
-there. What is held: under 'sla' the stepper is on the row and shows the
-manifest's default when the blob is silent; under any other backend it is
-not drawn at all, so a stale number cannot look in force.
+SLA's sparsity stepper used to extend the attention pill under `attention=sla`.
+Continuity Mac removed sage / kitchen / sla / laya from the combo (patched
+rides under default), so the pill no longer grows a sparsity control — a stale
+blob naming sla is coerced to default and draws no stepper.
 
 Skips itself if node is not installed.
 """
@@ -17,7 +15,7 @@ from domshim import DOM
 from harness import FAILURES, check, passed
 
 layout.skip_without_node()
-passed("the attention pill carries SLA's sparsity under sla and nothing otherwise")
+passed("Continuity Mac attention pill is default-only; SLA sparsity stays off the row")
 
 _pkg = layout.load("canvas", "accel", "sampling", "contextir", "compile",
                    "compile_image", "models", "registry", "manifest",
@@ -25,6 +23,7 @@ _pkg = layout.load("canvas", "accel", "sampling", "contextir", "compile",
                    "h3_declare", "h3_models", "h3_grammar", "ltx25_declare",
                    "ltx25_models", "ltx25_sampling")
 h3 = _pkg.manifest.describe("h3")
+ATTENTION = next(w for w in h3["widgets"] if w["id"] == "attention")
 SPARSITY = next(w for w in h3["widgets"] if w["id"] == "sla_sparsity")
 
 CHECK = """
@@ -46,12 +45,9 @@ const textOf = (node) => {
   return out;
 };
 
-// H3's row is handwritten and gates each pill on the node widget of that
-// name, so the attention combo is given one; the sparsity has none and is
-// found off the manifest, which is the point.
 const widgets = {
   attention: { name: "attention", value: "default",
-               options: { values: ["default", "sage", "kitchen", "sla"] } },
+               options: { values: ["default"] } },
 };
 
 const out = {};
@@ -68,9 +64,7 @@ console.log(JSON.stringify(out));
 
 CASES = {
     "default": {},
-    "kitchen": {"attention": "kitchen", "sla_sparsity": 0.7},
-    "sla_silent": {"attention": "sla"},
-    "sla_dialled": {"attention": "sla", "sla_sparsity": 0.7},
+    "retired_sla": {"attention": "sla", "sla_sparsity": 0.7},
 }
 
 with layout.pack(skip=["atlas"]) as target:
@@ -82,20 +76,17 @@ def says(case, needle):
     return any(text == needle for text in drawn[case])
 
 
-check("the manifest declares the field under the accelerators, gated on sla",
+check("the attention widget offers only default",
+      ATTENTION["options"], ["default"])
+check("sla_sparsity remains on the manifest (blob compat) but gated on sla",
       (SPARSITY["group"], SPARSITY.get("requires")),
       ("accel", [{"id": "attention", "value": "sla"}]))
-check("the range is the pack's", (SPARSITY["min"], SPARSITY["max"]), (0.0, 0.95))
-check("no sparsity on the row at the checkpoint's own attention",
+check("default draws attention default",
+      says("default", "attention default"), True)
+check("no sparsity stepper on the default row",
       any(t.startswith("sparsity") for t in drawn["default"]), False)
-check("...nor under another backend, whatever the blob holds",
-      any(t.startswith("sparsity") for t in drawn["kitchen"]), False)
-check("under sla the pill extends with the manifest's default",
-      says("sla_silent", f"sparsity {SPARSITY['default']:.2f}"), True)
-check("...and shows the number the blob holds",
-      says("sla_dialled", "sparsity 0.70"), True)
-check("the backend segment is still there beside it",
-      says("sla_dialled", "attention sla"), True)
+check("a retired sla blob still draws no sparsity stepper",
+      any(t.startswith("sparsity") for t in drawn["retired_sla"]), False)
 
 if FAILURES:
     raise SystemExit(1)

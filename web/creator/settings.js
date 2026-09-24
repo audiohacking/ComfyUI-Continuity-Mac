@@ -398,12 +398,11 @@ const SEAM_HANDOFFS = [
 const PLAYBACK = [
   { value: true, label: "Plays itself",
     note: "What the stage has always done: the clip loops silently as soon as it "
-        + "lands, and the sound follows the pointer. Step previews animate as the "
-        + "sampler works." },
+        + "lands, and the sound follows the pointer." },
   { value: false, label: "Waits for play",
-    note: "The stage holds the first frame, still, with the browser's controls to "
-        + "start it. For crowded canvases, where every looping clip is a decoder "
-        + "running for nobody." },
+    note: "The finished clip holds its first frame, still, with the browser's "
+        + "controls to start it. For crowded canvases, where every looping clip is "
+        + "a decoder running for nobody. The step preview keeps moving either way." },
 ];
 
 const ADVANCED = [

@@ -179,7 +179,7 @@ def routed(compiled, labels):
     return where
 
 
-def patched(graph, model, sampling, acceleration, weights):
+def patched(graph, model, sampling, acceleration, weights, prompt=""):
     """The three patches every sampler in this module runs behind, in order.
 
     The flow shifts first, only when they leave the checkpoints' own values: a
@@ -201,7 +201,7 @@ def patched(graph, model, sampling, acceleration, weights):
             "MiniMaxH3SigmaShift", model=model,
             shift_video=sampling.shift_video,
             shift_audio=sampling.shift_audio).out(0)
-    model = accel.graph_apply(graph, model, acceleration, sampling.steps)
+    model = accel.graph_apply(graph, model, acceleration, sampling.steps, prompt=prompt)
     return core.graph_preview(graph, model, weights, declare.RULES.fps)
 
 
@@ -539,7 +539,8 @@ class H3(base.Family):
         # Patched after the segment node, which is where the LoRAs go on. Off,
         # every one of these adds nothing and this is the segment's model
         # unchanged.
-        model = patched(graph, segment.out(0), sampling, acceleration, weights)
+        model = patched(graph, segment.out(0), sampling, acceleration, weights,
+                        prompt=compiled.prompt)
 
         # What every sampler below this line is handed, whether the schedule is
         # run in one sitting or two. The seed is not in here because the two
@@ -568,7 +569,8 @@ class H3(base.Family):
             opening = graph.node(
                 "KSamplerAdvanced",
                 model=patched(graph, segment.out(3), sampling,
-                              accel.opening(acceleration), weights),
+                              accel.opening(acceleration), weights,
+                              prompt=compiled.prompt),
                 latent_image=segment.out(2),
                 add_noise="enable", noise_seed=seed,
                 start_at_step=0, end_at_step=run.steps,
@@ -738,7 +740,8 @@ class H3(base.Family):
         # steps a lead-in splits are not in it to split.
         refine_against = graph.node(
             "ConditioningZeroOut", conditioning=second.out(1)).out(0)
-        refine_model = patched(graph, second.out(0), sampling, acceleration, weights)
+        refine_model = patched(graph, second.out(0), sampling, acceleration, weights,
+                               prompt=compiled.prompt)
         # The trained upscaler rides as an input only when the piece asks for
         # it, so a piece on bicubic keeps the cache key it had. Asked here and
         # not in compile because the file is a weight, and the weights are
@@ -791,7 +794,8 @@ class H3(base.Family):
         # segment node, cfg 1.0 skips the negative, the accelerators and the
         # preview decoder sit in the same places — because it is the same
         # model answering a smaller question.
-        crop_model = patched(graph, crop.out(0), sampling, acceleration, weights)
+        crop_model = patched(graph, crop.out(0), sampling, acceleration, weights,
+                             prompt=compiled.prompt)
         return graph.node(
             FACE_NODE, model=crop_model, positive=crop.out(1),
             negative=graph.node("ConditioningZeroOut",
@@ -845,7 +849,8 @@ class H3(base.Family):
             sampling, steps=guidelora.ROW["steps"],
             shift_video=guidelora.ROW["shift_video"],
             shift_audio=guidelora.ROW["shift_audio"])
-        model = patched(graph, stacked, own, acceleration, weights)
+        model = patched(graph, stacked, own, acceleration, weights,
+                        prompt=compiled.prompt)
         return guidepass.emit(graph, model, links, sampling, reel, finish, seed)
 
     def emit_motion_fix(self, graph, links, payload, compiled, written, latent,
@@ -872,7 +877,8 @@ class H3(base.Family):
         # Patched as the passes are — same LoRAs off the segment node, cfg 1.0
         # behind a zeroed negative, the same accelerators. No lead-in: like the
         # refine, this resumes partway down the schedule.
-        model = patched(graph, segment.out(0), sampling, acceleration, weights)
+        model = patched(graph, segment.out(0), sampling, acceleration, weights,
+                        prompt=compiled.prompt)
         return graph.node(
             MOTION_FIX_NODE, model=model, positive=segment.out(1),
             negative=graph.node("ConditioningZeroOut",
@@ -908,7 +914,8 @@ class H3(base.Family):
         # behind a zeroed negative, the same accelerators — because it is the
         # same model re-drawing a few frames of its own picture. No lead-in:
         # like the refine, this resumes partway down the schedule.
-        model = patched(graph, segment.out(0), sampling, acceleration, weights)
+        model = patched(graph, segment.out(0), sampling, acceleration, weights,
+                        prompt=compiled.prompt)
         restored = graph.node(
             SEAM_RESTORE_NODE, model=model, positive=segment.out(1),
             negative=graph.node("ConditioningZeroOut",

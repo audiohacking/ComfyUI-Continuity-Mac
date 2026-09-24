@@ -2,6 +2,9 @@
 
 Runs without ComfyUI or model weights: this is the real compiler's payload
 round trip, not a render or a measurement of GPU memory.
+
+Continuity Metal locks video to `match` (compile coerces `max`); images still
+round-trip both sizes.
 """
 
 import copy
@@ -18,13 +21,19 @@ def video(size):
             "takes": "motion", "ref_size": size}
 
 
-for kind in ("image", "video"):
-    for size in ("match", "max"):
-        raw = {"handle": "ref-1", "kind": kind, "filename": "reference",
-               "ref_size": size}
-        parsed = compiler._parse_assets([raw])[0]
-        restored = compiler._parse_assets([compiler._asset_dict(parsed)])[0]
-        check(f"{kind}/{size} round-trips", restored.ref_size, size)
+for size in ("match", "max"):
+    raw = {"handle": "ref-1", "kind": "image", "filename": "reference",
+           "ref_size": size}
+    parsed = compiler._parse_assets([raw])[0]
+    restored = compiler._parse_assets([compiler._asset_dict(parsed)])[0]
+    check(f"image/{size} round-trips", restored.ref_size, size)
+
+# Video: both sizes compile to match and stay there after serialize.
+for size in ("match", "max"):
+    parsed = compiler._parse_assets([video(size)])[0]
+    check(f"video/{size} coerces to match", parsed.ref_size, "match")
+    restored = compiler._parse_assets([compiler._asset_dict(parsed)])[0]
+    check(f"video/{size} stays match after serialize", restored.ref_size, "match")
 
 for size in ("match", "max"):
     piece = {"version": 2, "family": "h3", "aspect": "1:1", "short_edge": 480,
@@ -45,20 +54,24 @@ for size in ("match", "max"):
                         else compiler.timeline_payloads(selected))
             for index, payload in enumerate(payloads):
                 compiled = compiler.compile_segment(payload)
-                check(f"{location}/{mode}/{size} pass {index} keeps video size",
-                      [asset.ref_size for asset in compiled.ref_videos], [size])
+                check(f"{location}/{mode}/{size} pass {index} keeps video match",
+                      [asset.ref_size for asset in compiled.ref_videos], ["match"])
 
 # Cast motion injects the video without a direct @video citation in the shot.
-piece["assets"] = [{"handle": "img-1", "kind": "image", "filename": "face.png"},
-                   video("match")]
-piece["subjects"] = [{"handle": "anna", "from": ["img-1"], "motion": "vid-1"}]
-for segment in piece["segments"]:
-    segment["prompt"] = "@anna walks."
+piece = {"version": 2, "family": "h3", "aspect": "1:1", "short_edge": 480,
+         "assets": [{"handle": "img-1", "kind": "image", "filename": "face.png"},
+                    video("match")],
+         "subjects": [{"handle": "anna", "from": ["img-1"], "motion": "vid-1"}],
+         "segments": [{"duration_s": 3, "prompt": "@anna walks."},
+                      {"duration_s": 3, "prompt": "@anna waves."}]}
 for payload in compiler.timeline_payloads(piece):
     check("cast-injected motion keeps match",
           compiler.compile_segment(payload).ref_videos[0].ref_size, "match")
 
-# Retain the existing serialization of max-sized videos: no gratuitous cache
-# key change for the common default while repairing explicit match.
-check("video max remains explicit", compiler._asset_dict(
-    compiler._parse_assets([video("max")])[0])["ref_size"], "max")
+# Video max is coerced to match on Continuity Metal — never round-trips as max.
+check("video max is coerced away",
+      "ref_size" not in compiler._asset_dict(
+          compiler._parse_assets([video("max")])[0]), True)
+check("video match stays the silent default",
+      "ref_size" not in compiler._asset_dict(
+          compiler._parse_assets([video("match")])[0]), True)

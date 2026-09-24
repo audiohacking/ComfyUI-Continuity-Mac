@@ -1162,40 +1162,50 @@ export class PreStageRow {
 
   commit() { this.host.commit(); }
 
-  /** Move the blob onto another arch: release the leaving arch's turbo and
-   *  write the arriving arch's own row — the numbers these models run at have
-   *  nothing to do with each other, and carrying the row across would be
-   *  wrong on arrival. The prompt and the remount are the body's. */
+  /** Move the blob onto another arch: release the leaving arch's turbo, set
+   *  its row aside under its name, and write the arriving arch's — the row it
+   *  dialled last time it was here, or its own defaults where it never was.
+   *  The numbers these models run at have nothing to do with each other, so
+   *  carrying the row across would be wrong on arrival; forgetting it would be
+   *  re-dialling Krea each time Ideogram was looked at. The same bargain
+   *  `state.setFamily` strikes on the video side. The prompt and the remount
+   *  are the body's. */
   setArch(arch) {
     const io = this.widgetIO();
+    const state = this.state;
     // The switch is per arch, so leaving one does not throw the other's — but
     // the row on the way out is this node's one row, and it belongs to whoever
-    // is arriving. Released here rather than carried across.
-    const leaving = this.state.turbo[this.state.arch];
-    if (leaving?.on && leaving.lora) S.removeLora(this.state, leaving.lora);
+    // is arriving. Released first: switching off *is* putting the row back, and
+    // a stash taken without it would be the distillation's step count rather
+    // than the one the user dialled.
+    const leaving = state.turbo[state.arch];
+    if (leaving?.on && leaving.lora) S.removeLora(state, leaving.lora);
+    if (leaving?.on && leaving.saved) {
+      for (const [key, value] of Object.entries(leaving.saved)) io.set(key, value);
+    }
     if (leaving) { leaving.on = false; leaving.saved = null; }
-    this.state.arch = arch;
 
-    if (arch === "ideogram4") {
-      io.set("steps", S.PRESTAGE_IDEOGRAM_STEPS[this.state.quality]);
-      io.set("cfg", S.PRESTAGE_IDEOGRAM_ROW.cfg);
-      io.set("sampler_name", S.PRESTAGE_IDEOGRAM_ROW.sampler_name);
-    } else if (S.PRESTAGE_BASE_ROW[arch]) {
-      const row = S.PRESTAGE_BASE_ROW[arch];
-      io.set("steps", row.steps);
-      io.set("cfg", row.cfg);
-      io.set("sampler_name", row.sampler_name);
+    const spare = S.parsePreStageSamplingSpare(state.sampling_spare);
+    const dialled = S.parseSampling(state.sampling);
+    if (Object.keys(dialled).length) spare[state.arch] = dialled;
+    else delete spare[state.arch];
+    // The arch being switched *to* keeps nothing in the stash: its row is
+    // about to be the live one, and two copies of it would be one to go stale.
+    const returning = spare[arch];
+    delete spare[arch];
+    state.sampling_spare = spare;
+    state.arch = arch;
+
+    // The arch's own row first, then whatever it had dialled over it — a stash
+    // holds only what was picked, and the rest is the declaration's.
+    const native = this.nativeRow();
+    for (const [key, value] of Object.entries(native)) {
       // A family without a scheduler control (Klein's schedule is the model's
       // own) declares none, and the widget is left where it was rather than
       // written undefined.
-      if (row.scheduler !== undefined) io.set("scheduler", row.scheduler);
-    } else {
-      const row = S.PRESTAGE_STILL_ROW;
-      io.set("steps", row.steps);
-      io.set("cfg", row.cfg);
-      io.set("sampler_name", row.sampler_name);
-      io.set("scheduler", row.scheduler);
+      if (value !== undefined) io.set(key, value);
     }
+    for (const [key, value] of Object.entries(returning ?? {})) io.set(key, value);
   }
 
   // ---- turbo -----------------------------------------------------------------
@@ -1391,7 +1401,7 @@ export class PreStageRow {
         sampler_name: S.PRESTAGE_IDEOGRAM_ROW.sampler_name,
       };
     }
-    return { ...S.PRESTAGE_BASE_ROW[this.state.arch] };
+    return { ...(S.PRESTAGE_BASE_ROW[this.state.arch] ?? S.PRESTAGE_STILL_ROW) };
   }
 
   // ---- weights ---------------------------------------------------------------

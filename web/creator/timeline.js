@@ -517,7 +517,7 @@ class Timeline {
       kind: row.kind,
       role: "reference",
       filename: row.path,
-      ref_size: "max",
+      ref_size: row.kind === "video" ? "match" : "max",
     };
     if (row.kind === "video") entry.track = S.trackFor(row);
     this.timeline.assets.push(entry);
@@ -906,13 +906,8 @@ class Timeline {
       ...(S.sizeable(asset) ? [el("button", {
         class: "mmc-ghost",
         style: { fontSize: "11px" },
-        title: asset.kind === "video"
-          ? t("match: scale to the generation's pixel area. max: core's 768 reference canvas — "
-            + "more detail, and much the slower of the two. A video's reference tokens are its "
-            + "whole grid once per latent frame, so at full length one clip is about as long as "
-            + "the target video itself, and all of it rides through every sampling step.")
-          : t("match: scale to the generation's pixel area. max: 2048 short edge — better identity, "
-            + "several times slower, because reference tokens ride through every sampling step."),
+        title: t("match: scale to the generation's pixel area. max: 2048 short edge — better identity, "
+          + "several times slower, because reference tokens ride through every sampling step."),
         text: t(S.refSize(asset)),
         onclick: () => {
           asset.ref_size = S.refSize(asset) === "max" ? "match" : "max";
@@ -1164,7 +1159,7 @@ class Timeline {
       kind: picked.kind,
       role: "reference",
       filename: picked.path ?? picked.filename,
-      ref_size: "max",
+      ref_size: picked.kind === "video" ? "match" : "max",
     };
     if (picked.trim) entry.trim = picked.trim;
     if (picked.crop) entry.crop = picked.crop;
@@ -1238,8 +1233,8 @@ class Timeline {
       kind: picked.kind,
       role: "reference",
       filename: picked.path,
-      // Fidelity is why a reference is attached — same default as the editor.
-      ref_size: "max",
+      // Images default to max (identity). Video is locked to match on Metal.
+      ref_size: picked.kind === "video" ? "match" : "max",
     };
     if (picked.kind === "video") entry.track = S.trackFor(picked);
     if (picked.trim) entry.trim = picked.trim;
@@ -3862,12 +3857,11 @@ export class TimelineBody {
         kind: picked.kind,
         role: "reference",
         filename: picked.path,
-        ref_size: "max",
+        ref_size: picked.kind === "video" ? "match" : "max",
       };
       if (picked.kind === "video") entry.track = S.trackFor(picked);
       if (picked.trim) entry.trim = picked.trim;
       if (picked.crop) entry.crop = picked.crop;
-    if (picked.crop) entry.crop = picked.crop;
       this.timeline.assets.push(entry);
     }
     this.commit();
@@ -4332,7 +4326,7 @@ export class TimelineBody {
       kind: picked.kind,
       role: "reference",
       filename: picked.path,
-      ref_size: "max",
+      ref_size: picked.kind === "video" ? "match" : "max",
     };
     if (picked.kind === "video") entry.track = S.trackFor(picked);
     if (picked.trim) entry.trim = picked.trim;

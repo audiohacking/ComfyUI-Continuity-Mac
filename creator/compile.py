@@ -169,13 +169,12 @@ TRACKS = ("picture", "picture+sound", "sound")
 
 # What a reference is encoded at when the blob does not say, per kind.
 #
-# Both entries are the behaviour that shipped before the setting reached video,
-# so a blob written without one is read exactly as it used to be. They differ
-# because `max` means something different for each: an image's is the reference
-# pipeline's 2048 short edge, a video's is core's 768-short-edge reference
-# canvas, which is already the ceiling — for video the setting only ever buys
-# speed, never more detail than it had.
-DEFAULT_REF_SIZE = {"image": "match", "video": "max"}
+# Continuity Metal forces video to `match`: a video's `max` is core's 768
+# short-edge canvas, which only multiplies reference tokens through every
+# sampling step and never buys detail past the generation canvas. Letting the
+# UI offer `max` put every Ref2VA sample on the slow path by one click. Images
+# keep `match` by default and may still ask for `max` (identity vs speed).
+DEFAULT_REF_SIZE = {"image": "match", "video": "match"}
 
 # What of a reference is actually the reference. "full" — the default and the
 # only behaviour that existed before the setting — is the whole file.
@@ -738,6 +737,11 @@ def _parse_assets(raw):
         ref_size = item.get("ref_size") or DEFAULT_REF_SIZE.get(kind, "match")
         if ref_size not in ("match", "max"):
             raise CompileError(f"@{handle}: ref_size must be 'match' or 'max'")
+        # Video is locked to match on Continuity Metal. An old blob or a
+        # hand-edited JSON saying max is coerced rather than refused — the
+        # render must not be able to pick the slow token budget by mistake.
+        if kind == "video":
+            ref_size = "match"
 
         track = _parse_track(handle, kind, item)
 
@@ -3652,10 +3656,9 @@ def _asset_dict(asset):
            "filename": asset.filename}
     if asset.track:
         out["track"] = asset.track
-    # Video parsing defaults to max, unlike images. Omitting an explicit match
-    # here changes both the reference canvas and the memory cost after a merge
-    # or pool injection. Keep existing max serialization/cache keys unchanged.
-    if asset.kind == "video" or asset.ref_size != "match":
+    # Video is always match on Continuity Metal — omit like the image default.
+    # Only a non-default image size is written.
+    if asset.kind != "video" and asset.ref_size != "match":
         out["ref_size"] = asset.ref_size
     if asset.trim:
         out["trim"] = {"start": asset.trim[0], "end": asset.trim[1]}
