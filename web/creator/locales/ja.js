@@ -2,6 +2,13 @@
 // contract: a key must match the string in the code to the character, and a
 // missing key simply shows the English.
 export const ja = {
+ "Reference preview": "参照プレビュー",
+ "Previous reference": "前の参照",
+ "Next reference": "次の参照",
+ "Source video preview — crop, trim and mirroring are not applied.": "元動画のプレビュー — クロップ、区間指定、左右反転は適用されません。",
+ "RefMod preview image — the original video is not stored here.": "RefModのプレビュー画像 — このファイルに元動画は保存されていません。",
+ "Preview unavailable. The file may be missing, or this browser may not support its format.": "プレビューを表示できません。ファイルが見つからないか、このブラウザーが形式に対応していない可能性があります。",
+ "Configured range: {start}–{end} s": "設定された区間: {start}–{end} 秒",
  "Turbo off — running RAW. On, the distillation is loaded — the Turbo checkpoint, or the same weights as a LoRA — and the row drops to the picked quality at cfg 1.": "Turbo オフ — RAW で実行中。オンにすると蒸留が読み込まれ (Turbo チェックポイント、または同じ重みの LoRA)、行は選択した品質・cfg 1 になります。",
  "Turbo off. Ideogram ships no distilled checkpoint, so this runs a distillation LoRA over the ordinary one: a handful of steps at cfg 1, with the unconditional checkpoint left unloaded. The first press picks the file.": "Turbo オフ。Ideogram に蒸留チェックポイントはないため、通常のチェックポイントに蒸留 LoRA を重ねて実行します: cfg 1 で数ステップ、無条件チェックポイントは読み込みません。最初の押下でファイルを選びます。",
  "Turbo — {lora} over the ordinary checkpoint at {steps} steps, cfg 1. Switching off removes the LoRA and puts the sampler row back.": "Turbo — 通常のチェックポイントに {lora} を重ねて {steps} ステップ、cfg 1。オフにすると LoRA を外し、サンプラー行を元に戻します。",
@@ -470,6 +477,7 @@ export const ja = {
  "No {kind} files in the input folder yet — upload one.": "入力フォルダーにはまだ{kind}ファイルがありません — アップロードしてください。",
  "The folder holds more — only the newest {count} files are listed.": "フォルダーにはさらにあります — 新しい {count} 件のみを表示しています。",
  "{path} — double-click to view": "{path} — ダブルクリックで表示",
+ "Click to swap the file behind @{handle}, double-click to view it.": "クリックで @{handle} の裏のファイルを差し替え、ダブルクリックで表示します。",
  "Remove from favorites": "お気に入りから削除",
  "Add to favorites": "お気に入りに追加",
  "sound": "サウンド",
@@ -988,6 +996,8 @@ export const ja = {
  "Short": "短",
  "Medium": "中",
  "Long": "長",
+ "Longest": "最長",
+ "Extra long": "超長",
  "Blend": "ブレンド",
  "Blend into segment {n}": "セグメント {n} へブレンド",
  "segment {n} — previous": "セグメント {n} — 前",

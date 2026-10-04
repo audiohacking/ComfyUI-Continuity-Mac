@@ -15,6 +15,47 @@ export const css = `
 .mmc-light-audio { width: min(520px, 90vw); }
 .mmc-light-name { font-size: calc(12px * var(--mmc-type)); color: var(--mmc-dim); }
 
+/* Reference preview is read-only. Controls and captions occupy their own rows,
+   so native video seeking/fullscreen controls never compete with a footer. */
+.mmc-reference-preview-target { cursor: pointer; }
+.mmc-reference-preview-target:focus-visible {
+  outline: 2px solid var(--mmc-accent); outline-offset: 3px;
+}
+.mmc-reference-preview {
+  display: flex; flex-direction: column; gap: 12px;
+  width: min(1100px, 100%); height: min(860px, 100%); max-height: 100%; min-height: 0;
+  background: var(--mmc-float); color: var(--mmc-text);
+  border: 1px solid var(--mmc-line); border-radius: 16px; padding: 16px;
+  box-sizing: border-box; box-shadow: 0 30px 80px var(--mmc-shadow);
+}
+.mmc-reference-preview-head { display: flex; align-items: center; gap: 12px; flex: none; }
+.mmc-reference-preview-head strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.mmc-reference-preview-stage {
+  display: flex; justify-content: center; align-items: center;
+  min-height: 0; flex: 1 1 auto; overflow: hidden; background: var(--mmc-media-bg);
+}
+.mmc-reference-preview-stage > img, .mmc-reference-preview-stage > video {
+  display: block; max-width: 100%; max-height: 100%; width: 100%; height: 100%; min-height: 0;
+  object-fit: contain; border-radius: 8px;
+}
+.mmc-reference-preview-stage > video:fullscreen { max-width: none; max-height: none; width: 100%; height: 100%; }
+.mmc-reference-preview-foot { flex: none; display: flex; flex-direction: column; gap: 8px; max-height: 24vh; overflow: auto; }
+.mmc-reference-preview-name { font-size: calc(12px * var(--mmc-type)); overflow-wrap: anywhere; }
+.mmc-reference-preview-note, .mmc-reference-preview-error {
+  color: var(--mmc-dim); font-size: calc(12px * var(--mmc-type)); overflow-wrap: anywhere;
+}
+.mmc-reference-preview-nav { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.mmc-reference-preview-nav[hidden], .mmc-reference-preview-note[hidden], .mmc-reference-preview-error[hidden] { display: none; }
+.mmc-reference-preview-nav button {
+  border: 1px solid var(--mmc-line); border-radius: 8px; background: var(--mmc-surface);
+  color: var(--mmc-text); min-width: 36px; min-height: 32px; font-size: 20px; cursor: pointer;
+}
+.mmc-reference-preview-nav button:disabled { opacity: .35; cursor: default; }
+.mmc-reference-preview button:focus-visible { outline: 2px solid var(--mmc-accent); outline-offset: 2px; }
+.mmc-reference-preview-count { font-variant-numeric: tabular-nums; font-size: calc(12px * var(--mmc-type)); }
+.mmc-reference-preview-guard { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+
+
 /* --- LoRA detail sheet ---------------------------------------------------- */
 /* Double-click on a manager card. Two shapes on purpose: with a sidecar the
    sheet is showcase-first (media pane + info column); without one there is

@@ -14,6 +14,7 @@
 import { el, icon, ICONS, dismissable, keepScroll, placeNear, svg, swappable } from "./dom.js";
 import { CastShelf } from "./cast.js";
 import { keepAsMod } from "./refmod.js";
+import { isVisualReference, previewable, openReferencePreview } from "./reference-preview.js";
 import { t } from "./i18n.js";
 import { openPicker } from "./picker.js";
 import { openLoras, loraBlock, settlePins } from "./loras.js";
@@ -2286,6 +2287,9 @@ export class CreatorEditor {
   }
 
   renderAssets() {
+    // This editor also serves Prestage. Change the thumbnail gesture only for
+    // timeline shots; other callers keep their existing file-replacement door.
+    const previewReferences = this.piece.segments?.includes(this.state) ?? false;
     // Whose files these are. Casting somebody attaches their pictures — the
     // roster does it, `presets.addSubjectToPiece` does it — so some of this row
     // is there because a name in the sentence put it there rather than because
@@ -2320,15 +2324,25 @@ export class CreatorEditor {
       // prompt and only its picture.
       // Framed, where it is: the thumbnail is the window the render reads,
       // so a subject picked off a sheet shows as the subject.
-      const thumb = asset.kind === "image" || asset.role === "guide"
+      const thumb = asset.kind === "image" || asset.role === "guide" || (previewReferences && isVisualReference(asset))
         ? el("img", { class: "mmc-asset-thumb", alt: asset.filename,
                       src: viewUrl(asset.filename, { preview: true, crop: S.thumbCrop(asset) }) })
         : el("span", { class: "mmc-asset-thumb" }, [svg(ICONS[asset.kind], 15)]);
-      swappable(thumb, {
-        title: t("Swap the file behind @{handle} — the handle stays, so the prompt still fits.",
-                 { handle: asset.handle }),
-        onclick: () => this.replaceAsset(asset),
-      });
+      if (previewReferences && isVisualReference(asset)) {
+        previewable(thumb, {
+          title: t("Click to swap the file behind @{handle}, double-click to view it.",
+                   { handle: asset.handle }),
+          open: (returnFocus) => openReferencePreview([asset], { returnFocus }),
+          click: () => this.replaceAsset(asset),
+        });
+      } else {
+        // Audio keeps its established single-click replacement action.
+        swappable(thumb, {
+          title: t("Swap the file behind @{handle} — the handle stays, so the prompt still fits.",
+                   { handle: asset.handle }),
+          onclick: () => this.replaceAsset(asset),
+        });
+      }
 
       // The name is the door. It used to be dead text with four narrowing
       // buttons beside it, three of which the simple view hid while they held
@@ -2525,10 +2539,17 @@ export class CreatorEditor {
      * and it already says "cited nowhere yet" about them.
      */
     const pooledChip = (asset) => {
-      const thumb = asset.kind === "image"
+      const thumb = asset.kind === "image" || (previewReferences && isVisualReference(asset))
         ? el("img", { class: "mmc-asset-thumb", alt: asset.filename,
                       src: viewUrl(asset.filename, { preview: true, crop: S.thumbCrop(asset) }) })
         : el("span", { class: "mmc-asset-thumb" }, [svg(ICONS[asset.kind], 15)]);
+      if (previewReferences && isVisualReference(asset)) {
+        // Read-only preview is safe here: replacement still belongs to the piece.
+        previewable(thumb, {
+          title: t("{path} — double-click to view", { path: asset.filename }),
+          open: (returnFocus) => openReferencePreview([asset], { returnFocus }),
+        });
+      }
       // A span, where the card's own chip has a door: the sheet behind that
       // door sets `ref_size`, the narrowing and the trim, and all three belong
       // to the piece. Opening it here would offer a card-shaped edit to

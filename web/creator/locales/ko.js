@@ -2,6 +2,13 @@
 // contract: a key must match the string in the code to the character, and a
 // missing key simply shows the English.
 export const ko = {
+ "Reference preview": "참조 미리보기",
+ "Previous reference": "이전 참조",
+ "Next reference": "다음 참조",
+ "Source video preview — crop, trim and mirroring are not applied.": "원본 영상 미리보기 — 자르기, 구간 설정, 좌우 반전은 적용되지 않습니다.",
+ "RefMod preview image — the original video is not stored here.": "RefMod 미리보기 이미지 — 원본 영상은 이 파일에 저장되어 있지 않습니다.",
+ "Preview unavailable. The file may be missing, or this browser may not support its format.": "미리보기를 열 수 없습니다. 파일이 없거나 이 브라우저에서 지원하지 않는 형식일 수 있습니다.",
+ "Configured range: {start}–{end} s": "설정된 구간: {start}–{end}초",
  "Turbo off — running RAW. On, the distillation is loaded — the Turbo checkpoint, or the same weights as a LoRA — and the row drops to the picked quality at cfg 1.": "Turbo 꺼짐 — RAW 실행 중. 켜면 증류가 로드되고(Turbo 체크포인트 또는 같은 가중치의 LoRA) 해당 행은 선택한 품질과 cfg 1로 내려갑니다.",
  "Turbo off. Ideogram ships no distilled checkpoint, so this runs a distillation LoRA over the ordinary one: a handful of steps at cfg 1, with the unconditional checkpoint left unloaded. The first press picks the file.": "Turbo 꺼짐. Ideogram은 증류 체크포인트를 제공하지 않으므로 일반 체크포인트 위에 증류 LoRA를 얹어 실행합니다: cfg 1에서 몇 스텝, 무조건 체크포인트는 로드하지 않습니다. 처음 누르면 파일을 고릅니다.",
  "Turbo — {lora} over the ordinary checkpoint at {steps} steps, cfg 1. Switching off removes the LoRA and puts the sampler row back.": "Turbo — 일반 체크포인트 위에 {lora}를 얹어 {steps}스텝, cfg 1. 끄면 LoRA를 제거하고 샘플러 행을 되돌립니다.",
@@ -470,6 +477,7 @@ export const ko = {
  "No {kind} files in the input folder yet — upload one.": "입력 폴더에 아직 {kind} 파일이 없습니다 — 하나 업로드하세요.",
  "The folder holds more — only the newest {count} files are listed.": "폴더에 더 있습니다 — 최신 파일 {count}개만 표시됩니다.",
  "{path} — double-click to view": "{path} — 더블 클릭하면 보기",
+ "Click to swap the file behind @{handle}, double-click to view it.": "클릭하면 @{handle} 뒤의 파일을 교체하고, 더블 클릭하면 봅니다.",
  "Remove from favorites": "즐겨찾기에서 제거",
  "Add to favorites": "즐겨찾기에 추가",
  "sound": "사운드",
@@ -989,6 +997,8 @@ export const ko = {
  "Short": "짧게",
  "Medium": "보통",
  "Long": "길게",
+ "Longest": "가장 길게",
+ "Extra long": "아주 길게",
  "Blend": "블렌드",
  "Blend into segment {n}": "세그먼트 {n}으로 블렌드",
  "segment {n} — previous": "세그먼트 {n} — 이전",

@@ -6,6 +6,22 @@ exactly as it was written, wall of text and all.
 
 ## Unreleased
 
+**Upstream 3.1 core deferred.** Cast wears-per-family, RefMod-per-VAE-space,
+Klein picture-sets, and the chat Thinks/Makes rewrite are product work that
+overlaps Metal-touched `encode.py` / `media.py` / `state.js`. Port later as
+a selective branch (RefMod multi-space + media stride on top of Metal VAE /
+DeepStack), not a merge of upstream main.
+
+## 3.0.5
+
+**Upstream timeline UX backports (UI/workflow only).** Segment reference
+thumbnails swap on click and preview on double-click (`reference-preview.js`).
+Clip-card ✕ is clickable again (foot wraps instead of sitting under the seam).
+Deleting the last timeline card leaves an empty strip with the Timeline pill
+as the way back to a blank shot. Kept takes get Trim/Crop on the card like
+clips. Seam blends offer Extra long / Longest (up to ~3 s on H3). Re-run the
+publish Action to ship this version.
+
 **Metal H3 sampler: mtlflashattn rolled back; video refs locked to `match`;
 attention UI is `default` only.** Live forcing of `metal_flash_attn` through
 `optimized_attention` produced noise on Ref2VA (2026-09-24) despite science
@@ -33,12 +49,6 @@ The live step preview no longer honours “Waits for play” after KJNodes
 ships mp4 stage videos. Switching a still family stashes and restores
 its sampler row (`sampling_spare`), as the video family switch already
 did. Chat already moved pinned still rows through `PreStageRow.setArch`.
-
-**Upstream 3.1 core deferred.** Cast wears-per-family, RefMod-per-VAE-space,
-Klein picture-sets, and the chat Thinks/Makes rewrite are product work that
-overlaps Metal-touched `encode.py` / `media.py` / `state.js`. Port later as
-a selective branch (RefMod multi-space + media stride on top of Metal VAE /
-DeepStack), not a merge of upstream main.
 
 ## 3.0.4
 

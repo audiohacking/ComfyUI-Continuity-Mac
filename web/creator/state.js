@@ -2455,10 +2455,8 @@ export function emptyTimeline() {
     // The merge answers that question for it. A piece of one shot *is* the
     // Creator — you drop this node to write a video — so the shot is the
     // default and the clip is the other thing you can do to a strip that
-    // exists. Which also retires the state the old reasoning was protecting
-    // against: the card is not undeletable, it is only unemptyable, and
-    // clearing the last one leaves a blank shot rather than a piece with
-    // nothing in it and a face that can only say so. See `syncCanvas`.
+    // exists. A default, not a floor: the last card deletes like any other, and
+    // a strip with nothing on it is the add tile, offering both ways to begin.
     segments: [emptySegment()],
   };
 }
@@ -2515,7 +2513,7 @@ export function pieceWritten(timeline) {
   if (timeline.subjects?.length) return true;
   if (timeline.sound?.length) return true;
   const segments = timeline.segments ?? [];
-  return segments.length !== 1 || segmentWritten(segments[0]);
+  return segments.length > 1 || (segments.length === 1 && segmentWritten(segments[0]));
 }
 
 /** Empty the piece, in place — the body holds this object and everything else
@@ -2942,18 +2940,6 @@ function collapsePool(timeline) {
  * Stripped again by `serializeTimeline` — the segments do not own it.
  */
 function syncCanvas(timeline) {
-  // A piece is at least one shot, so deleting the last card clears it rather
-  // than emptying the piece. What that removes is a face nobody wanted: a
-  // summary reporting "empty · 0 segments" with a button offering to open a
-  // strip that has nothing on it, reached by doing the ordinary thing of
-  // deleting cards. The node is the Creator, and the Creator with nothing in it
-  // is a blank prompt.
-  //
-  // Here rather than in the delete handler, so a hand-edited blob and a saved
-  // workflow arrive in the same shape as one the strip just emptied. The two
-  // ways to begin a piece are still both offered — they are the add tile beside
-  // the card, which is where they are the rest of the time.
-  if (!timeline.segments.length) timeline.segments.push(emptySegment());
   // A clip is not generated, so it cannot share a generation — neither by
   // being merged into the pass in front of it nor by having a card merged into
   // it. Cleared here rather than guarded at every read, the same way the seam
@@ -3357,10 +3343,11 @@ export function parseTimeline(raw) {
       timeline.upscale_models = parseUpscalerModels(timeline.upscale_models);
       timeline.turbo = parseTurbo(timeline.turbo, timeline.family);
       timeline.guide = parseGuide(timeline.guide, pieceFamily(timeline));
-      // No card is invented for a blob that has none: a fresh node's widget is
-      // "{}" and the strip it opens is empty on purpose — see `emptyTimeline`.
-      const segments = Array.isArray(parsed.segments) ? parsed.segments : [];
-      timeline.segments = segments.map((raw) => {
+      // A blob with no `segments` key — a fresh node's widget is "{}" — keeps
+      // `emptyTimeline`'s blank shot. One saved with an empty list stays empty:
+      // that is a strip whose cards were all deleted, and opening it must not
+      // put one back.
+      timeline.segments = !Array.isArray(parsed.segments) ? timeline.segments : parsed.segments.map((raw) => {
         // A clip card holds none of a generation's machinery — no prompt, no
         // assets, no LoRAs — so it is read on its own terms rather than through
         // `parseState`, which would fill it with fields that mean nothing here.
@@ -3445,6 +3432,14 @@ export function parseTimeline(raw) {
             ...(Number.isInteger(take.seed) ? { seed: take.seed } : {}),
             ...(take.stamp ? { stamp: String(take.stamp) } : {}),
           };
+          // The window and framing set on the take, read the way a clip card's
+          // are: a take is spliced as a clip, and these are its clip settings.
+          const start = Number(take.trim?.start);
+          const end = Number(take.trim?.end);
+          if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+            segment.take.trim = { start, end };
+          }
+          if (take.crop && typeof take.crop === "object") segment.take.crop = { ...take.crop };
         }
         // The card's own seed. Absent — which is every card until somebody
         // rolls one here — means the number on the node.
