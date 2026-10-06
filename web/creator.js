@@ -496,6 +496,20 @@ app.registerExtension({
   beforeRegisterNodeDef(nodeType, nodeData) {
     const name = WIDGET[nodeData.name];
     if (!name) return;
+    // Video saves report under stock `images` so ComfyUI Assets can Download
+    // the mp4. Continuity's stage already shows that clip — strip the stock
+    // preview payload on the Creator/Timeline node so a second player does not
+    // land under the satellite. History still keeps `images` (server-side).
+    if (PIECE.includes(nodeData.name)) {
+      const executed = nodeType.prototype.onExecuted;
+      nodeType.prototype.onExecuted = function (message) {
+        if (message?.images) {
+          const { images: _drop, ...rest } = message;
+          return executed?.apply(this, [rest]);
+        }
+        return executed?.apply(this, arguments);
+      };
+    }
     const original = nodeType.prototype.getExtraMenuOptions;
     nodeType.prototype.getExtraMenuOptions = function (canvas, options) {
       original?.apply(this, arguments);

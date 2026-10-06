@@ -1935,6 +1935,7 @@ export const zh = {
  "{count} RefMod": "{count} 个 RefMod",
  "{count} RefMods": "{count} 个 RefMod",
  "Download": "下载",
+ "Download {name}": "下载 {name}",
  "Download .safetensors": "下载 .safetensors",
  "Show in library": "在库中显示",
  "The file": "文件",

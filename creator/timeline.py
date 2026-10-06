@@ -867,14 +867,14 @@ class MiniMaxH3Save(io.ComfyNode):
         mux.write(os.path.join(directory, filename), reel,
                   fps=float(fps), crf=int(crf), metadata=metadata)
 
-        # Not `ui.PreviewVideo`: that reports under "images", the key the stock
-        # frontend preview keys on — and with the caller's id stamped on this
-        # node, that stock player lands on the canvas node right under the
-        # stage already showing the same clip. A key core does not know keeps
-        # the report and loses the widget; stage.js reads it by name.
-        report = {"mmc_video": [
-            {"filename": filename, "subfolder": subfolder, "type": "output"},
-        ]}
+        # Continuity's stage reads `mmc_video`. Stock ComfyUI Assets / history
+        # download paths key video files under `images` (PreviewVideo's wire
+        # shape, even for mp4) — without that key View can work while Download
+        # stays dead. Both carry the same file; the Creator's onExecuted hook
+        # drops the stock preview widget so a second player does not land under
+        # the satellite.
+        saved = {"filename": filename, "subfolder": subfolder, "type": "output"}
+        report = {"mmc_video": [saved], "images": [saved]}
         kept = cls._takes(reel, takes, filename_prefix, fps, crf,
                           piece=(filename, subfolder))
         if kept:

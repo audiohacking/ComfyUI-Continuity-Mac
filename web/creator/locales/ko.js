@@ -1934,6 +1934,7 @@ export const ko = {
  "{count} RefMod": "RefMod {count}개",
  "{count} RefMods": "RefMod {count}개",
  "Download": "다운로드",
+ "Download {name}": "{name} 다운로드",
  "Download .safetensors": ".safetensors 다운로드",
  "Show in library": "라이브러리에서 보기",
  "The file": "파일",

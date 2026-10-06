@@ -30,7 +30,7 @@
 //   stamped with our id.
 
 import { api } from "../../../scripts/api.js";
-import { el } from "./dom.js";
+import { el, icon } from "./dom.js";
 import { outputUrl, uiSetting } from "./api.js";
 import { openLoupe } from "./loupe.js";
 import { submission } from "./queue.js";
@@ -191,6 +191,11 @@ export class Stage {
     for (const name of EVENTS) api.addEventListener(name, this.onEvent);
 
     this.render();
+    // A finished clip lives on disk and in `/history`, but this card only holds
+    // it in memory. After a workflow tab switch — or any remount that rebuilds
+    // the body — the stage comes back idle with the file still there. Ask once
+    // for the newest video (or still) that belongs to this node.
+    void this.hydrate();
   }
 
   /** Called when the node body is torn down. Listeners on `api` outlive the DOM
@@ -539,11 +544,13 @@ export class Stage {
    * server kept of it — the two are the same payload and this is the one place
    * that reads it.
    *
-   * Under our own keys, not "images": that is the key core's stock widgets
-   * watch, and they were rendering a second player on the canvas node right
-   * under this stage. `MiniMaxH3Save` reports `mmc_video` and
-   * `MiniMaxH3SaveImage` reports `mmc_image` instead; which one arrives is also
-   * what says whether the result is a clip or a still.
+   * Under our own keys for the stage player. Stock ComfyUI Assets / history
+   * download paths also need the same mp4 under `images` (PreviewVideo's wire
+   * shape, even for video) — `MiniMaxH3Save` dual-reports that; the Creator
+   * onExecuted hook strips it so a second player does not land under the
+   * satellite. `MiniMaxH3Save` reports `mmc_video` and `MiniMaxH3SaveImage`
+   * reports `mmc_image`; which one arrives is also what says whether the
+   * result is a clip or a still.
    */
   finish(output, { promptId = this.promptId, prompt = null } = {}) {
     // The passes, each as its own file, so a card whose pass came out right
@@ -684,12 +691,89 @@ export class Stage {
     const mine = [];
     const anyOfOurs = [];
     for (const [id, output] of Object.entries(outputs ?? {})) {
-      if (!output?.mmc_video?.[0] && !output?.mmc_image?.[0]) continue;
-      anyOfOurs.push(output);
-      if (this.ours(id) || this.ours(meta?.[id]?.display_node)) mine.push(output);
+      if (!output?.mmc_video?.[0] && !output?.mmc_image?.[0]
+          && !this.stockMedia(output)?.[0]) continue;
+      // Continuity's own keys first; stock `images` (PreviewVideo's key, even
+      // for mp4) is the downloadable shape older history entries may only have.
+      const normalised = this.normaliseOutput(output);
+      anyOfOurs.push(normalised);
+      if (this.ours(id) || this.ours(meta?.[id]?.display_node)) mine.push(normalised);
     }
     if (mine.length) return mine[0];
     return anyOfOurs.length === 1 ? anyOfOurs[0] : null;
+  }
+
+  /** Stock PreviewVideo / SaveVideo report under `images` even for mp4 files.
+   *  Continuity prefers `mmc_video` / `mmc_image`; accept either so a remount
+   *  can restore a clip that history only kept under the stock key. */
+  stockMedia(output) {
+    const items = output?.images;
+    if (!Array.isArray(items) || !items[0]?.filename) return null;
+    return items;
+  }
+
+  normaliseOutput(output) {
+    if (output?.mmc_video?.[0] || output?.mmc_image?.[0]) return output;
+    const items = this.stockMedia(output);
+    if (!items) return output;
+    const video = items.some((item) => /\.(mp4|webm|mov)$/i.test(item.filename || ""));
+    return video ? { ...output, mmc_video: items } : { ...output, mmc_image: items };
+  }
+
+  /**
+   * Put the newest finished render for this node back on the stage.
+   *
+   * Files never left disk — only the in-memory card did, typically when the
+   * workflow tab was switched and the body remounted idle. `/history` holds the
+   * same `mmc_video` (and stock `images`) payload `executed` once carried.
+   */
+  async hydrate() {
+    if (this.state !== "idle") return;
+    if (this.hydrateWait) return this.hydrateWait;
+    this.hydrateWait = (async () => {
+      try {
+        const response = await api.fetchApi("/history?max_items=64");
+        if (!response.ok) return;
+        const history = await response.json();
+        if (this.state !== "idle") return;
+        // Classic shape: `{ promptId: entry }`. Walk newest-last when the runtime
+        // preserves insertion order; otherwise any match is better than blank.
+        let found = null;
+        for (const [promptId, entry] of Object.entries(history ?? {})) {
+          if (!entry?.outputs) continue;
+          if (entry.status && entry.status.completed === false) continue;
+          const output = this.savedOutput(entry.outputs, entry.meta);
+          if (!output) continue;
+          found = { output, promptId };
+        }
+        if (!found || this.state !== "idle") return;
+        this.finish(found.output, { promptId: found.promptId });
+      } catch { /* offline / old frontend — leave the stage idle */ }
+      finally { this.hydrateWait = null; }
+    })();
+    return this.hydrateWait;
+  }
+
+  /** Save the finished file through the browser. `/view` is inline playback, so
+   *  the native video "Download" control stays dead; this fetches the bytes and
+   *  forces a Save As under the file's own name. */
+  async downloadResult() {
+    const saved = this.result?.saved;
+    if (!saved?.filename) return;
+    try {
+      const response = await fetch(outputUrl(saved));
+      if (!response.ok) throw new Error(String(response.status));
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = el("a", { href: url, download: saved.filename });
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Fall back to opening /view — at least the file is reachable.
+      window.open(outputUrl(saved), "_blank");
+    }
   }
 
   // ---- render --------------------------------------------------------------
@@ -797,6 +881,12 @@ export class Stage {
         onclick: () => this.onGallery(),
         onpointerdown: (event) => event.stopPropagation(),
       }));
+      if (this.result?.saved) left.push(el("button", {
+        class: "mmc-stage-chip mmc-stage-gallery",
+        title: t("Download {name}", { name: this.result.name }),
+        onclick: () => this.downloadResult(),
+        onpointerdown: (event) => event.stopPropagation(),
+      }, [icon("download", 12), el("span", { text: t("Download") })]));
       if (this.result?.saved && this.resultChips) left.push(...this.resultChips(this.result.saved));
       // A look for this render: opens the library on the Style tab with this
       // frame in the wipe. Only where the owner has the pass to run it.

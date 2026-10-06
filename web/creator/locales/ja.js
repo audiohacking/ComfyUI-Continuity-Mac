@@ -1933,6 +1933,7 @@ export const ja = {
  "{count} RefMod": "{count} 個の RefMod",
  "{count} RefMods": "{count} 個の RefMod",
  "Download": "ダウンロード",
+ "Download {name}": "{name} をダウンロード",
  "Download .safetensors": ".safetensors をダウンロード",
  "Show in library": "ライブラリで表示",
  "The file": "ファイル",

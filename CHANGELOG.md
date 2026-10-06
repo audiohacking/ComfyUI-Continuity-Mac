@@ -12,6 +12,19 @@ overlaps Metal-touched `encode.py` / `media.py` / `state.js`. Port later as
 a selective branch (RefMod multi-space + media stride on top of Metal VAE /
 DeepStack), not a merge of upstream main.
 
+## 3.0.6
+
+**Finished videos stay on the stage and download.** Remounting a Creator /
+Timeline (tab switch, redraw) used to leave the stage idle even though the
+mp4 was still on disk — hydrate now restores the newest clip from `/history`.
+`MiniMaxH3Save` dual-reports each mp4 under Continuity's `mmc_video` and
+ComfyUI's stock `images` key (PreviewVideo's convention for video files) so
+Assets / history Download works; the node's `onExecuted` drops the stock
+preview widget so a second player does not appear under the satellite. The
+stage's own Download chip fetches the bytes for a real Save As, because
+`/view` is inline playback and the native video control stays dead. Re-run the
+publish Action to ship this version.
+
 ## 3.0.5
 
 **Upstream timeline UX backports (UI/workflow only).** Segment reference

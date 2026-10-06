@@ -168,7 +168,7 @@ export const api = {
       return { ok: true, status: 200, json: async () => (globalThis.__probe
         ?? { has_audio: false, duration: null, width: 1920, height: 1080 }) };
     }
-    if (String(route).startsWith("/history/")) {
+    if (String(route).startsWith("/history")) {
       return { ok: true, status: 200, json: async () => (globalThis.__history ?? {}) };
     }
     if (route.endsWith("/compiled_prompt")) {
@@ -2994,6 +2994,28 @@ try {
   out.recovery.failedState = second.state;
   out.recovery.failedSays = second.failure?.items.map((item) => item.what).join(" ");
   second.destroy();
+
+  // After a tab remount the stage is idle again even though the mp4 is still
+  // on disk and in history. Hydrate puts the newest clip back on the card.
+  globalThis.__history = { "p-old": {
+    outputs: { "7.4": { mmc_video: [
+      { filename: "old_00001_.mp4", subfolder: "continuity/renders", type: "output" }] } },
+    meta: { "7.4": { display_node: "7" } },
+    status: { status_str: "success", completed: true },
+  }, "p-new": {
+    outputs: { "7.4": { mmc_video: [
+      { filename: "new_00002_.mp4", subfolder: "continuity/renders", type: "output" }],
+      images: [{ filename: "new_00002_.mp4", subfolder: "continuity/renders", type: "output" }] } },
+    meta: { "7.4": { display_node: "7" } },
+    status: { status_str: "success", completed: true },
+  } };
+  const remounted = new Stage({ nodeId: () => 7 });
+  await remounted.hydrate();
+  out.recovery.hydrated = remounted.state;
+  out.recovery.hydratedFile = remounted.result?.name ?? null;
+  remounted.renderReadout();
+  out.recovery.hasDownload = (remounted.readout.text ?? "").includes("Download");
+  remounted.destroy();
   globalThis.__history = null;
 } catch (error) {
   out.errors.push(`recovery: ${error.stack}`);
@@ -3489,6 +3511,11 @@ check("...but a render that finished unheard is read back off the server",
 check("...and one that ended without a file says why rather than nothing",
       (recovery.get("failedState"), recovery.get("failedSays")),
       ("failed", "out of memory"))
+check("a remounted stage restores the newest finished video from history",
+      (recovery.get("hydrated"), recovery.get("hydratedFile")),
+      ("done", "new_00002_.mp4"))
+check("...and offers Download on the finished clip",
+      recovery.get("hasDownload"), True)
 
 # --- what the pack is holding, and taking it back -----------------------------
 #
